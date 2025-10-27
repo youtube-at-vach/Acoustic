@@ -1,0 +1,408 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>2D Acoustic FDTD Demo (Browser)</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin: 12px; background:#111; color:#eee; }
+  #controls { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin-bottom:8px; }
+  .panel { background:#1b1b1b; padding:10px; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.6); }
+  canvas { background: #222; border-radius:8px; display:block; }
+  label { display:inline-block; margin-right:6px; font-size:13px; color:#ddd; }
+  input[type=range] { vertical-align:middle; }
+  button { background:#2b6cff; color:white; border:none; padding:6px 10px; border-radius:6px; cursor:pointer; }
+  button.secondary { background:#444; }
+  #footer { margin-top:8px; font-size:12px; color:#aaa; }
+</style>
+</head>
+<body>
+<h2>2D Acoustic FDTD (遊ぶ用デモ)</h2>
+
+<div id="controls" class="panel">
+  <div>
+    <label>解像度</label>
+    <select id="res">
+      <option value="64">軽い (64×64)</option>
+      <option value="128" selected>中 (128×128)</option>
+      <option value="200">重め (200×200)</option>
+    </select>
+  </div>
+
+  <div>
+    <label>周波数 (Hz)</label>
+    <input id="freq" type="range" min="200" max="8000" step="10" value="1500">
+    <span id="freqVal">1500</span>
+  </div>
+
+  <div>
+    <label>振幅</label>
+    <input id="amp" type="range" min="0.2" max="2" step="0.1" value="1">
+    <span id="ampVal">1.0</span>
+  </div>
+
+  <div>
+    <label>ソース</label>
+    <select id="sourcetype">
+      <option value="tone">連続正弦波</option>
+      <option value="pulse">短パルス</option>
+    </select>
+  </div>
+
+  <div>
+    <button id="run">開始</button>
+    <button id="pause" class="secondary">停止</button>
+    <button id="clear" class="secondary">クリア（壁）</button>
+    <button id="reset" class="secondary">リセット（場）</button>
+  </div>
+
+  <div>
+    <label>描画モード</label>
+    <select id="drawmode">
+      <option value="wall" selected>壁（左ドラッグで描画）</option>
+      <option value="erase">消しゴム（右ドラッグ）</option>
+      <option value="source">ソース配置（クリック）</option>
+    </select>
+  </div>
+
+  <div>
+    <label>吸収層強度</label>
+    <input id="damp" type="range" min="0" max="1" step="0.01" value="0.7">
+    <span id="dampVal">0.70</span>
+  </div>
+</div>
+
+<canvas id="canvas" width="640" height="640"></canvas>
+<div id="footer" class="panel">
+  <div>操作：左ドラッグで壁を描く、右ドラッグで消す、"描画モード" を "ソース" にしてクリックで音源追加</div>
+  <div>注：壁は簡易 Dirichlet 近似（物理的には厳密ではありません）。解像度を上げると計算負荷が増えます。</div>
+</div>
+
+<script>
+/* ====== 簡易 2D FDTD 波動デモ (教育 / 遊び用) ======
+   - 圧力 p の2次時間差分：
+     p_new = 2p - p_old + (c*dt)^2 * laplacian(p)
+   - 壁は簡易的に Dirichlet (p = 0) で扱っています（教育用の近似）。
+   - 吸収層（スポンジ）で端の反射を和らげます。
+   - 安定化のため CFL をチェックして dt を決めます。
+*/
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let Nx = 128, Ny = 128; // grid
+let gridW = canvas.width, gridH = canvas.height;
+let cellW = gridW / Nx, cellH = gridH / Ny;
+
+let p = null, pOld = null, pNew = null; // 圧力場
+let obstacle = null; // 0: free, 1: wall
+let sources = []; // {i,j, type, t0}
+let running = false;
+let lastTime = 0;
+let stepsPerFrame = 2;
+
+const c = 343.0; // m/s (scale is arbitrary; we map domain size -> physical length)
+let domainSize = 0.30; // meters (both x and y) : adjust if you want
+let dx = domainSize / Nx;
+let dt = dx / (c * Math.SQRT2) * 0.6; // CFL safety factor
+
+// UI elements
+const resEl = document.getElementById('res');
+const freqEl = document.getElementById('freq');
+const freqVal = document.getElementById('freqVal');
+const ampEl = document.getElementById('amp');
+const ampVal = document.getElementById('ampVal');
+const runBtn = document.getElementById('run');
+const pauseBtn = document.getElementById('pause');
+const clearBtn = document.getElementById('clear');
+const resetBtn = document.getElementById('reset');
+const drawMode = document.getElementById('drawmode');
+const sourceType = document.getElementById('sourcetype');
+const dampEl = document.getElementById('damp');
+const dampVal = document.getElementById('dampVal');
+
+freqEl.addEventListener('input', ()=> freqVal.textContent = freqEl.value);
+ampEl.addEventListener('input', ()=> ampVal.textContent = Number(ampEl.value).toFixed(1));
+dampEl.addEventListener('input', ()=> dampVal.textContent = Number(dampEl.value).toFixed(2));
+resEl.addEventListener('change', ()=>{
+  Nx = Number(resEl.value);
+  Ny = Nx;
+  restartSimulation();
+});
+
+function allocFields() {
+  p = new Float32Array(Nx*Ny).fill(0);
+  pOld = new Float32Array(Nx*Ny).fill(0);
+  pNew = new Float32Array(Nx*Ny).fill(0);
+  obstacle = new Uint8Array(Nx*Ny).fill(0);
+  cellW = canvas.width / Nx;
+  cellH = canvas.height / Ny;
+  dx = domainSize / Nx;
+  dt = dx / (c * Math.SQRT2) * 0.6;
+  // stepsPerFrame adjust for speed
+  if (Nx <= 64) stepsPerFrame = 6;
+  else if (Nx <= 128) stepsPerFrame = 3;
+  else stepsPerFrame = 1;
+}
+
+allocFields();
+
+// helper to index
+function idx(i,j){ return i + j*Nx; }
+
+// simple sponge damping profile at boundary
+function makeDampingMask(strength=0.7) {
+  const mask = new Float32Array(Nx*Ny).fill(1.0);
+  const thickness = Math.max(8, Math.floor(0.08 * Math.max(Nx,Ny))); // cells
+  for (let j=0;j<Ny;j++){
+    for (let i=0;i<Nx;i++){
+      let d = 0;
+      d = Math.min(d,0);
+      let di = Math.min(i, Nx-1-i);
+      let dj = Math.min(j, Ny-1-j);
+      let edge = Math.min(di,dj);
+      if (edge < thickness) {
+        const r = (thickness - edge)/thickness; // 0..1
+        mask[idx(i,j)] = 1.0 - strength * (r*r);
+      }
+    }
+  }
+  return mask;
+}
+let baseDampStrength = Number(dampEl.value);
+let dampMask = makeDampingMask(baseDampStrength);
+
+dampEl.addEventListener('input', ()=> {
+  baseDampStrength = Number(dampEl.value);
+  dampMask = makeDampingMask(baseDampStrength);
+});
+
+// Laplacian 5-point
+function laplacianAt(i,j, arr){
+  const im1 = (i>0) ? i-1 : i;
+  const ip1 = (i<Nx-1) ? i+1 : i;
+  const jm1 = (j>0) ? j-1 : j;
+  const jp1 = (j<Ny-1) ? j+1 : j;
+  return (arr[idx(ip1,j)] + arr[idx(im1,j)] + arr[idx(i,jp1)] + arr[idx(i,jm1)] - 4*arr[idx(i,j)]) / (dx*dx);
+}
+
+// update one time step
+function stepForward(tGlobal) {
+  const omega = 2*Math.PI*Number(freqEl.value);
+  const amp = Number(ampEl.value);
+  const sourceTypeVal = sourceType.value;
+
+  // simple finite difference 2nd order time
+  const coef = (c*c) * (dt*dt);
+  for (let j=1;j<Ny-1;j++){
+    let base = j * Nx;
+    for (let i=1;i<Nx-1;i++){
+      const k = base + i;
+      if (obstacle[k]) { // wall: Dirichlet approx -> keep p=0 (simple)
+        pNew[k] = 0;
+        continue;
+      }
+      const lap = (p[k+1] + p[k-1] + p[k+Nx] + p[k-Nx] - 4*p[k]) / (dx*dx);
+      pNew[k] = 2*p[k] - pOld[k] + coef * lap;
+    }
+  }
+
+  // apply sources
+  for (let s of sources){
+    const k = idx(s.i,s.j);
+    if (sourceTypeVal === 'tone') {
+      // continuous tone: sinusoidal injection
+      const val = amp * Math.sin(omega * tGlobal);
+      pNew[k] += val;
+    } else {
+      // pulse: gaussian short pulse
+      const tau = 1.5e-4; // pulse width
+      const dtPhysical = tGlobal - s.t0;
+      const pulse = amp * Math.exp(- (dtPhysical*dtPhysical) / (tau*tau));
+      pNew[k] += pulse;
+    }
+  }
+
+  // damping sponge
+  for (let j=0;j<Ny;j++){
+    for (let i=0;i<Nx;i++){
+      const k = idx(i,j);
+      pNew[k] *= dampMask[k];
+    }
+  }
+
+  // rotate buffers
+  const tmp = pOld; pOld = p; p = pNew; pNew = tmp;
+}
+
+// simple color mapping for pressure
+function drawField() {
+  const image = ctx.createImageData(canvas.width, canvas.height);
+  const data = image.data;
+  // find max abs for normalization (avoid one large spike dominating)
+  let maxVal = 1e-6;
+  for (let k=0;k<Nx*Ny;k++){
+    const v = Math.abs(p[k]);
+    if (v > maxVal) maxVal = v;
+  }
+  // map each cell to pixels
+  for (let j=0;j<Ny;j++){
+    for (let i=0;i<Nx;i++){
+      const k = idx(i,j);
+      // cell rectangle in canvas
+      const x0 = Math.floor(i * cellW);
+      const y0 = Math.floor(j * cellH);
+      const x1 = Math.floor((i+1) * cellW);
+      const y1 = Math.floor((j+1) * cellH);
+
+      // color based on normalized value (-1..1)
+      const val = p[k] / maxVal;
+      // blue for negative, red for positive, black for zero
+      const col = colorMap(val);
+
+      for (let yy=y0; yy<y1; yy++){
+        for (let xx=x0; xx<x1; xx++){
+          const idxPix = (yy*canvas.width + xx) * 4;
+          data[idxPix] = col[0];
+          data[idxPix+1] = col[1];
+          data[idxPix+2] = col[2];
+          data[idxPix+3] = 255;
+        }
+      }
+      // draw obstacle overlay
+      if (obstacle[k]) {
+        for (let yy=y0; yy<y1; yy++){
+          for (let xx=x0; xx<x1; xx++){
+            const idxPix = (yy*canvas.width + xx) * 4;
+            data[idxPix] = 30;
+            data[idxPix+1] = 30;
+            data[idxPix+2] = 30;
+            data[idxPix+3] = 255;
+          }
+        }
+      }
+    }
+  }
+  ctx.putImageData(image,0,0);
+}
+
+// colormap: val in -1..1 -> rgb
+function colorMap(v){
+  // simple diverging map: negative->blue, zero->dark, positive->red
+  const t = Math.max(-1, Math.min(1, v));
+  if (t > 0){
+    const r = Math.min(255, Math.floor(80 + 175 * t));
+    const g = Math.floor(80 * (1 - t));
+    const b = Math.floor(80 * (1 - t));
+    return [r,g,b];
+  } else {
+    const tt = -t;
+    const r = Math.floor(80 * (1 - tt));
+    const g = Math.floor(80 * (1 - tt));
+    const b = Math.min(255, Math.floor(80 + 175 * tt));
+    return [r,g,b];
+  }
+}
+
+// main loop
+let tSim = 0;
+function loop(now){
+  if (!running) return;
+  // advance physical time by stepsPerFrame steps
+  for (let s=0; s<stepsPerFrame; s++){
+    stepForward(tSim);
+    tSim += dt;
+  }
+  drawField();
+  requestAnimationFrame(loop);
+}
+
+// canvas interaction for drawing walls and sources
+let isMouseDown = false;
+let lastCell = null;
+
+canvas.addEventListener('pointerdown', (ev)=>{
+  ev.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  const i = Math.floor(x / cellW);
+  const j = Math.floor(y / cellH);
+  isMouseDown = true;
+  lastCell = [i,j];
+  handleDraw(i,j, ev);
+});
+
+canvas.addEventListener('pointermove', (ev)=>{
+  if (!isMouseDown) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  const i = Math.floor(x / cellW);
+  const j = Math.floor(y / cellH);
+  if (i === lastCell?.[0] && j === lastCell?.[1]) return;
+  lastCell = [i,j];
+  handleDraw(i,j, ev);
+});
+
+canvas.addEventListener('pointerup', (ev)=>{
+  isMouseDown = false;
+  lastCell = null;
+});
+
+canvas.addEventListener('click', (ev)=>{
+  if (drawMode.value === 'source'){
+    const rect = canvas.getBoundingClientRect();
+    const x = ev.clientX - rect.left;
+    const y = ev.clientY - rect.top;
+    const i = Math.floor(x / cellW);
+    const j = Math.floor(y / cellH);
+    // add source
+    sources.push({i:i, j:j, t0:tSim});
+  }
+});
+
+function handleDraw(i,j, ev){
+  if (i<0 || i>=Nx || j<0 || j>=Ny) return;
+  const k = idx(i,j);
+  if (drawMode.value === 'wall'){
+    // left button draws, right button erases
+    if (ev.buttons & 1) obstacle[k] = 1;
+    else if (ev.buttons & 2) obstacle[k] = 0;
+  } else if (drawMode.value === 'erase'){
+    obstacle[k] = 0;
+  }
+}
+
+// controls
+runBtn.addEventListener('click', ()=>{
+  if (!running){
+    running = true;
+    tSim = 0;
+    requestAnimationFrame(loop);
+  }
+});
+pauseBtn.addEventListener('click', ()=> running=false);
+clearBtn.addEventListener('click', ()=> {
+  obstacle.fill(0);
+});
+resetBtn.addEventListener('click', ()=> {
+  p.fill(0); pOld.fill(0); pNew.fill(0); sources.length = 0;
+});
+
+
+// initial draw
+drawField();
+
+// small helper to restart on resolution change
+function restartSimulation(){
+  allocFields();
+  dampMask = makeDampingMask(baseDampStrength);
+  p.fill(0); pOld.fill(0); pNew.fill(0);
+  sources.length = 0;
+  drawField();
+}
+
+</script>
+</body>
+</html>
