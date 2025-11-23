@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>量子力学：ポテンシャル障壁・井戸シミュレーション</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            margin: 0;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 10px; }
+        .container {
+            background: #2b2b2b;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            max-width: 800px;
+            width: 100%;
+        }
+        canvas {
+            background-color: #000;
+            border-radius: 4px;
+            width: 100%;
+            height: auto;
+            border: 1px solid #444;
+            cursor: crosshair;
+        }
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+        }
+        label { font-size: 0.9rem; margin-bottom: 5px; color: #aaa; }
+        input[type=range] { width: 100%; cursor: pointer; }
+        .stats {
+            margin-top: 15px;
+            display: flex;
+            justify-content: space-around;
+            background: #222;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 1.1rem;
+        }
+        .stat-item span { font-weight: bold; }
+        .color-t { color: #4caf50; }
+        .color-r { color: #f44336; }
+        
+        .legend {
+            font-size: 0.8rem;
+            margin-top: 5px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        .legend span::before {
+            content: '■ ';
+        }
+        .l-wave { color: #00d2ff; }
+        .l-pot { color: rgba(255, 255, 255, 0.3); }
+
+        button {
+            margin-top: 10px;
+            padding: 10px;
+            background: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+            width: 100%;
+        }
+        button:hover { background: #1e88e5; }
+        
+        .description {
+            margin-top: 20px;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: #bbb;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>量子ポテンシャル散乱シミュレーション</h1>
+    
+    <canvas id="simCanvas" width="800" height="400"></canvas>
+    
+    <div class="legend">
+        <span class="l-wave">波動関数確率密度 |ψ|²</span>
+        <span class="l-pot">ポテンシャル V(x)</span>
+    </div>
+
+    <div class="stats">
+        <div class="stat-item color-r">反射率 R: <span id="dispRef">0.00</span></div>
+        <div class="stat-item color-t">透過率 T: <span id="dispTrans">0.00</span></div>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>粒子のエネルギー (運動量) <span id="valK"></span></label>
+            <input type="range" id="paramK" min="0.5" max="4.0" step="0.1" value="2.0">
+        </div>
+        <div class="control-group">
+            <label>ポテンシャルの高さ V0 (正=壁, 負=井戸) <span id="valV"></span></label>
+            <input type="range" id="paramV" min="-1.5" max="1.5" step="0.1" value="0.8">
+        </div>
+        <div class="control-group">
+            <label>ポテンシャルの幅 <span id="valW"></span></label>
+            <input type="range" id="paramW" min="10" max="100" step="5" value="40">
+        </div>
+        <div class="control-group">
+            <label>シミュレーション速度</label>
+            <input type="range" id="paramSpeed" min="1" max="20" step="1" value="10">
+        </div>
+    </div>
+    
+    <button onclick="resetSimulation()">リセット / 再発射</button>
+
+    <div class="description">
+        <p><strong>使い方：</strong>スライダーを動かしてパラメータを変更し、「リセット」を押すと粒子（ガウス波束）が再発射されます。</p>
+        <p><strong>解説：</strong>
+        <ul>
+            <li><strong>トンネル効果：</strong> エネルギーが壁の高さより低くても、壁が薄ければ粒子は透過します。</li>
+            <li><strong>井戸型ポテンシャル：</strong> V0をマイナスにすると「井戸」になります。粒子が井戸の上を通過する際、波長が短くなる（速度が上がる）様子や、反射が起こる様子（量子力学特有の反射）を観察してください。</li>
+            <li><strong>共鳴透過：</strong> 特定の条件で透過率が100%近くになる現象を探してみてください。</li>
+        </ul>
+        </p>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    const width = canvas.width;
+    const height = canvas.height;
+
+    // Simulation Parameters
+    const N = 800; // Grid size
+    let dx = 1.0;
+    let dt = 0.1; // Time step
+    
+    // Arrays for Wavefunction (Real and Imaginary parts)
+    let psiRe = new Float64Array(N);
+    let psiIm = new Float64Array(N);
+    // Potential Array
+    let V = new Float64Array(N);
+    
+    // Physics Constants (Simulated units)
+    const h_bar = 1.0;
+    const mass = 1.0;
+    const sigma = 0.5; // Coefficient for stability (dt / dx^2)
+
+    // UI Refs
+    const dispRef = document.getElementById('dispRef');
+    const dispTrans = document.getElementById('dispTrans');
+    
+    // State
+    let animationId;
+    let stepsPerFrame = 10;
+    
+    // Inputs
+    let k0 = 2.0; // Initial momentum
+    let V0 = 0.8; // Potential height
+    let w_pot = 40; // Potential width
+    
+    function init() {
+        // Setup Controls listeners
+        document.getElementById('paramK').addEventListener('input', (e) => {
+            k0 = parseFloat(e.target.value);
+            document.getElementById('valK').innerText = k0.toFixed(1);
+        });
+        document.getElementById('paramV').addEventListener('input', (e) => {
+            V0 = parseFloat(e.target.value);
+            document.getElementById('valV').innerText = V0.toFixed(1);
+        });
+        document.getElementById('paramW').addEventListener('input', (e) => {
+            w_pot = parseFloat(e.target.value);
+            document.getElementById('valW').innerText = w_pot;
+        });
+        document.getElementById('paramSpeed').addEventListener('input', (e) => {
+            stepsPerFrame = parseInt(e.target.value);
+        });
+
+        // Trigger initial label update
+        document.getElementById('paramK').dispatchEvent(new Event('input'));
+        document.getElementById('paramV').dispatchEvent(new Event('input'));
+        document.getElementById('paramW').dispatchEvent(new Event('input'));
+
+        resetSimulation();
+        loop();
+    }
+
+    function resetSimulation() {
+        // Reset Wavefunction to Gaussian Packet
+        const x0 = N * 0.2; // Start position
+        const spread = 20.0; // Packet width
+        
+        let norm = 0;
+        for (let i = 0; i < N; i++) {
+            let x = i;
+            // Gaussian envelope * Plane wave
+            const envelope = Math.exp(-0.5 * Math.pow((x - x0) / spread, 2));
+            psiRe[i] = envelope * Math.cos(k0 * (x - x0));
+            psiIm[i] = envelope * Math.sin(k0 * (x - x0));
+            norm += (psiRe[i]**2 + psiIm[i]**2) * dx;
+        }
+        
+        // Normalize
+        norm = Math.sqrt(norm);
+        for (let i = 0; i < N; i++) {
+            psiRe[i] /= norm;
+            psiIm[i] /= norm;
+        }
+
+        // Setup Potential Barrier/Well
+        const center = N * 0.6;
+        const start = Math.floor(center - w_pot/2);
+        const end = Math.floor(center + w_pot/2);
+        
+        for (let i = 0; i < N; i++) {
+            if (i >= start && i <= end) {
+                V[i] = V0; 
+            } else {
+                V[i] = 0;
+            }
+        }
+    }
+
+    function updatePhysics() {
+        // Solving Time-Dependent Schrodinger Equation using a simple explicit finite difference method (Visscher algorithm)
+        // Re(t+dt/2) = Re(t-dt/2) + H * Im(t) * dt
+        // Im(t+dt) = Im(t) - H * Re(t+dt/2) * dt
+        // This is symplectic and stable for small enough dt
+        
+        // Note: We are using a slightly simplified leapfrog integration here for visual smoothness.
+        // Coefficients: const c1 = - h_bar^2 / (2*m*dx^2)
+        
+        const c = 0.5 / (dx*dx); // factor for kinetic term (h=1, m=1)
+
+        // Update Real part (half step)
+        // d(RePsi)/dt = -H(ImPsi)
+        for (let i = 1; i < N - 1; i++) {
+            const laplacian = psiIm[i+1] + psiIm[i-1] - 2*psiIm[i];
+            const H_im = -c * laplacian + V[i] * psiIm[i];
+            psiRe[i] += H_im * dt;
+        }
+        
+        // Update Imaginary part (full step using new Real)
+        // d(ImPsi)/dt = H(RePsi)
+        for (let i = 1; i < N - 1; i++) {
+            const laplacian = psiRe[i+1] + psiRe[i-1] - 2*psiRe[i];
+            const H_re = -c * laplacian + V[i] * psiRe[i];
+            psiIm[i] -= H_re * dt;
+        }
+
+        // Absorbing Boundary Conditions (simple damping at edges to prevent reflection from canvas edge)
+        for (let i = 0; i < 20; i++) {
+            let factor = i / 20.0;
+            psiRe[i] *= factor; psiIm[i] *= factor;
+            psiRe[N-1-i] *= factor; psiIm[N-1-i] *= factor;
+        }
+    }
+
+    function calculateStats() {
+        // Calculate Probability to the left and right of the potential center
+        const center = Math.floor(N * 0.6);
+        let probL = 0;
+        let probR = 0;
+        let total = 0;
+
+        for(let i=0; i<N; i++) {
+            const p = psiRe[i]**2 + psiIm[i]**2;
+            total += p;
+            if (i < center - w_pot/2 - 10) { // Left region (Reflection)
+                probL += p;
+            } else if (i > center + w_pot/2 + 10) { // Right region (Transmission)
+                probR += p;
+            }
+        }
+        
+        // Normalize just in case (though simulation should conserve norm relatively well)
+        // For UI purposes, we just show the ratio of what has separated from the barrier region
+        const inBarrier = total - probL - probR;
+        const scale = 1.0 / (probL + probR + 0.00001); // Avoid divide by zero
+        
+        // Only update if the wave has hit the barrier
+        if (probR > 0.001 || probL > 0.001) {
+             // Rough estimate visualization
+             dispRef.innerText = (probL / total).toFixed(2);
+             dispTrans.innerText = (probR / total).toFixed(2);
+        } else {
+            dispRef.innerText = "0.00";
+            dispTrans.innerText = "0.00";
+        }
+    }
+
+    function draw() {
+        // Clear background
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, width, height);
+
+        // Draw Potential
+        ctx.beginPath();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.lineWidth = 2;
+        const groundY = height * 0.8; // Y position for V=0
+        const scaleV = 100; // Visual scale for Potential
+
+        ctx.moveTo(0, groundY);
+        for (let i = 0; i < N; i++) {
+            let x = (i / N) * width;
+            let y = groundY - V[i] * scaleV;
+            ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+
+        // Draw Wavefunction Probability Density |Psi|^2
+        ctx.beginPath();
+        ctx.strokeStyle = '#00d2ff';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#00d2ff';
+
+        const scalePsi = 3000; // Visual scale for Wavefunction
+
+        for (let i = 0; i < N; i++) {
+            let x = (i / N) * width;
+            let prob = psiRe[i]**2 + psiIm[i]**2;
+            let y = groundY - prob * scalePsi;
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Draw Zero Line
+        ctx.beginPath();
+        ctx.strokeStyle = '#333';
+        ctx.lineWidth = 1;
+        ctx.moveTo(0, groundY);
+        ctx.lineTo(width, groundY);
+        ctx.stroke();
+    }
+
+    function loop() {
+        for (let k = 0; k < stepsPerFrame; k++) {
+            updatePhysics();
+        }
+        calculateStats();
+        draw();
+        animationId = requestAnimationFrame(loop);
+    }
+
+    // Start
+    init();
+
+</script>
+</body>
+</html>

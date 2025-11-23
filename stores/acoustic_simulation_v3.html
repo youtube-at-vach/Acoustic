@@ -1,0 +1,1213 @@
+<!DOCTYPE html><html lang="ja"><head>
+<base href="https://rjjvc4flawlfo.ok.kimi.link">
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Advanced 2D Acoustic FDTD Simulation</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            box-sizing: border-box;
+        }
+        
+        body { 
+            font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; 
+            margin: 0; 
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%); 
+            color: #eee; 
+            display: flex; 
+            height: 100vh; 
+            overflow: hidden;
+        }
+        
+        #sidebar { 
+            width: 360px; 
+            background: rgba(27, 27, 43, 0.95); 
+            padding: 20px; 
+            overflow-y: auto; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 16px; 
+            backdrop-filter: blur(10px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .panel { 
+            background: rgba(40, 40, 60, 0.8); 
+            padding: 16px; 
+            border-radius: 12px; 
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        
+        .panel h3 { 
+            margin: 0 0 12px 0; 
+            font-size: 16px; 
+            font-weight: 600;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2); 
+            padding-bottom: 8px; 
+            color: #ffffff;
+        }
+        
+        canvas { 
+            background: rgba(20, 20, 30, 0.9); 
+            border-radius: 12px; 
+            display: block; 
+            image-rendering: pixelated; 
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        label { 
+            display: inline-block; 
+            margin-right: 8px; 
+            font-size: 13px; 
+            color: #ddd; 
+            font-weight: 500;
+        }
+        
+        input[type=range] { 
+            vertical-align: middle; 
+            width: 120px; 
+            height: 6px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #2b6cff;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(43, 108, 255, 0.4);
+        }
+        
+        input[type=range]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: #2b6cff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(43, 108, 255, 0.4);
+        }
+        
+        button { 
+            background: linear-gradient(135deg, #2b6cff 0%, #1e4fd1 100%); 
+            color: white; 
+            border: none; 
+            padding: 10px 16px; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            width: 100%; 
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 16px rgba(43, 108, 255, 0.3);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(43, 108, 255, 0.4);
+        }
+        
+        button.secondary { 
+            background: linear-gradient(135deg, #444 0%, #333 100%); 
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+        }
+        
+        button.secondary:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+        }
+        
+        .control-group { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 12px; 
+        }
+        
+        .control-group label { 
+            flex-basis: 40%; 
+        }
+        
+        #main-content { 
+            flex-grow: 1; 
+            padding: 20px; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            position: relative;
+        }
+        
+        #footer { 
+            margin-top: 12px; 
+            font-size: 12px; 
+            color: #aaa; 
+            text-align: center; 
+            opacity: 0.8;
+        }
+        
+        select {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            color: #fff;
+            padding: 6px 8px;
+            font-size: 13px;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #2b6cff;
+            box-shadow: 0 0 0 2px rgba(43, 108, 255, 0.2);
+        }
+        
+        .value-display {
+            color: #2b6cff;
+            font-weight: 600;
+            min-width: 40px;
+            text-align: right;
+        }
+        
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+        
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+        
+        #waveform-canvas {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 100px;
+            background: rgba(20, 20, 30, 0.8);
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .preset-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 12px;
+        }
+        
+        .preset-buttons button {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #666;
+            margin-left: 8px;
+        }
+        
+        .status-indicator.active {
+            background: #2b6cff;
+            box-shadow: 0 0 8px rgba(43, 108, 255, 0.6);
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+    </style>
+<script src="https://statics.moonshot.cn/sdk/preview-widgets.min.js" defer=""></script></head>
+<body>
+    <div id="sidebar">
+        <div class="panel">
+            <h3>シミュレーション制御 <span class="status-indicator" id="status-indicator"></span></h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button id="run" class="pulse-animation">開始</button>
+                <button id="pause" class="secondary">停止</button>
+            </div>
+            <div style="margin-top: 12px;">
+                <button id="reset" class="secondary">リセット</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>設定</h3>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="グリッドの解像度を変更">解像度</label>
+                <select id="res">
+                    <option value="64">軽い (64x64)</option>
+                    <option value="128" selected="">中 (128x128)</option>
+                    <option value="200">重い (200x200)</option>
+                    <option value="256">超高 (256x256)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="境界での音波の吸収率">吸収層強度</label>
+                <input id="damp" type="range" min="0" max="1" step="0.01" value="0.7"/>
+                <span id="dampVal" class="value-display">0.70</span>
+            </div>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="音波の可視化色">カラーマップ</label>
+                <select id="colormap">
+                    <option value="diverging" selected="">Red/Blue</option>
+                    <option value="viridis">Viridis</option>
+                    <option value="grayscale">Grayscale</option>
+                    <option value="plasma">Plasma</option>
+                    <option value="heatmap">Heatmap</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="シミュレーション速度">速度</label>
+                <input id="speed" type="range" min="1" max="10" step="1" value="3"/>
+                <span id="speedVal" class="value-display">3</span>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>音源</h3>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="音の周波数">周波数 (Hz)</label>
+                <input id="freq" type="range" min="100" max="8000" step="10" value="1500"/>
+                <span id="freqVal" class="value-display">1500</span>
+            </div>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="音の大きさ">振幅</label>
+                <input id="amp" type="range" min="0.1" max="3" step="0.1" value="1"/>
+                <span id="ampVal" class="value-display">1.0</span>
+            </div>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="音源の種類">ソースタイプ</label>
+                <select id="sourcetype">
+                    <option value="tone" selected="">連続正弦波</option>
+                    <option value="pulse">短パルス</option>
+                    <option value="sweep">周波数スイープ</option>
+                    <option value="noise">ホワイトノイズ</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="実際の音を再生">オーディオ出力</label>
+                <input type="checkbox" id="audio-output"/>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>描画ツール</h3>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="描画モード">モード</label>
+                <select id="drawmode">
+                    <option value="wall" selected="">壁</option>
+                    <option value="erase">消しゴム</option>
+                    <option value="source">ソース配置</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label class="tooltip" data-tooltip="図形プリセット">プリセット</label>
+                <select id="preset-shape">
+                    <option value="none" selected="">なし</option>
+                    <option value="rect">四角形</option>
+                    <option value="circle">円</option>
+                    <option value="triangle">三角形</option>
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+                <button id="undo" class="secondary">元に戻す</button>
+                <button id="redo" class="secondary">やり直し</button>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+                <button id="clear" class="secondary">壁をクリア</button>
+                <button id="clear-sources" class="secondary">ソースをクリア</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>プリセットシナリオ</h3>
+            <div class="preset-buttons">
+                <button id="preset-empty">空間</button>
+                <button id="preset-room">部屋</button>
+                <button id="preset-maze">迷路</button>
+                <button id="preset-waveguide">導波管</button>
+                <button id="preset-resonator">共振器</button>
+                <button id="preset-obstacles">障害物</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>データ</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <button id="export" class="secondary">壁を保存</button>
+                <button id="import" class="secondary">壁を読込</button>
+                <button id="screenshot" class="secondary">スクリーンショット</button>
+                <button id="record" class="secondary">録画開始</button>
+            </div>
+            <input type="file" id="import-file" style="display: none" accept=".json"/>
+        </div>
+    </div>
+
+    <div id="main-content">
+        <canvas id="canvas" width="640" height="640"></canvas>
+        <canvas id="waveform-canvas" width="600" height="100"></canvas>
+        <div id="footer">
+            描画モードを選択し、左ドラッグで描画・消去。音源はクリックで配置。<br/>
+            キーボードショートカット: Space(開始/停止) R(リセット) Z(元に戻す) Y(やり直し)
+        </div>
+    </div>
+
+    <script>
+        // ====== Advanced 2D FDTD Acoustic Simulation ======
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const waveformCanvas = document.getElementById('waveform-canvas');
+        const waveformCtx = waveformCanvas.getContext('2d');
+        
+        let Nx = 128, Ny = 128;
+        let gridW = canvas.width, gridH = canvas.height;
+        let cellW = gridW / Nx, cellH = gridH / Ny;
+        
+        let p = null, pOld = null, pNew = null;
+        let obstacle = null;
+        let sources = [];
+        let running = false;
+        let lastTime = 0;
+        let stepsPerFrame = 2;
+        let simulationSpeed = 3;
+        
+        const c = 343.0;
+        let domainSize = 0.30;
+        let dx = domainSize / Nx;
+        let dt = dx / (c * Math.SQRT2) * 0.6;
+        
+        // Audio context
+        let audioContext = null;
+        let audioEnabled = false;
+        let oscillator = null;
+        let gainNode = null;
+        
+        // UI elements
+        const resEl = document.getElementById('res');
+        const freqEl = document.getElementById('freq');
+        const freqVal = document.getElementById('freqVal');
+        const ampEl = document.getElementById('amp');
+        const ampVal = document.getElementById('ampVal');
+        const speedEl = document.getElementById('speed');
+        const speedVal = document.getElementById('speedVal');
+        const runBtn = document.getElementById('run');
+        const pauseBtn = document.getElementById('pause');
+        const clearBtn = document.getElementById('clear');
+        const clearSourcesBtn = document.getElementById('clear-sources');
+        const resetBtn = document.getElementById('reset');
+        const drawMode = document.getElementById('drawmode');
+        const sourceType = document.getElementById('sourcetype');
+        const dampEl = document.getElementById('damp');
+        const dampVal = document.getElementById('dampVal');
+        const colormapEl = document.getElementById('colormap');
+        const presetShapeEl = document.getElementById('preset-shape');
+        const exportBtn = document.getElementById('export');
+        const importBtn = document.getElementById('import');
+        const importFileEl = document.getElementById('import-file');
+        const screenshotBtn = document.getElementById('screenshot');
+        const recordBtn = document.getElementById('record');
+        const audioOutputEl = document.getElementById('audio-output');
+        const statusIndicator = document.getElementById('status-indicator');
+        
+        const undoBtn = document.getElementById('undo');
+        const redoBtn = document.getElementById('redo');
+        
+        let undoStack = [];
+        let redoStack = [];
+        const MAX_HISTORY = 50;
+        
+        // Recording
+        let mediaRecorder = null;
+        let isRecording = false;
+        
+        // Preset buttons
+        const presetEmptyBtn = document.getElementById('preset-empty');
+        const presetRoomBtn = document.getElementById('preset-room');
+        const presetMazeBtn = document.getElementById('preset-maze');
+        const presetWaveguideBtn = document.getElementById('preset-waveguide');
+        const presetResonatorBtn = document.getElementById('preset-resonator');
+        const presetObstaclesBtn = document.getElementById('preset-obstacles');
+        
+        function updateUndoRedoButtons() {
+            undoBtn.disabled = undoStack.length === 0;
+            redoBtn.disabled = redoStack.length === 0;
+        }
+        
+        function saveStateForUndo() {
+            redoStack = [];
+            undoStack.push(new Uint8Array(obstacle));
+            if (undoStack.length > MAX_HISTORY) {
+                undoStack.shift();
+            }
+            updateUndoRedoButtons();
+        }
+        
+        undoBtn.addEventListener('click', () => {
+            if (undoStack.length > 0) {
+                const prevState = undoStack.pop();
+                redoStack.push(new Uint8Array(obstacle));
+                obstacle.set(prevState);
+                if (!running) drawField();
+                updateUndoRedoButtons();
+            }
+        });
+        
+        redoBtn.addEventListener('click', () => {
+            if (redoStack.length > 0) {
+                const nextState = redoStack.pop();
+                undoStack.push(new Uint8Array(obstacle));
+                obstacle.set(nextState);
+                if (!running) drawField();
+                updateUndoRedoButtons();
+            }
+        });
+        
+        // UI event listeners
+        freqEl.addEventListener('input', () => {
+            freqVal.textContent = freqEl.value;
+            updateAudioFrequency();
+        });
+        
+        ampEl.addEventListener('input', () => {
+            ampVal.textContent = Number(ampEl.value).toFixed(1);
+            updateAudioVolume();
+        });
+        
+        speedEl.addEventListener('input', () => {
+            speedVal.textContent = speedEl.value;
+            simulationSpeed = Number(speedEl.value);
+            updateSimulationSpeed();
+        });
+        
+        dampEl.addEventListener('input', () => {
+            dampVal.textContent = Number(dampEl.value).toFixed(2);
+            baseDampStrength = Number(dampEl.value);
+            dampMask = makeDampingMask(baseDampStrength);
+        });
+        
+        resEl.addEventListener('change', () => {
+            Nx = Number(resEl.value);
+            Ny = Nx;
+            restartSimulation();
+        });
+        
+        audioOutputEl.addEventListener('change', () => {
+            audioEnabled = audioOutputEl.checked;
+            if (audioEnabled) {
+                initAudio();
+            } else {
+                stopAudio();
+            }
+        });
+        
+        function allocFields() {
+            p = new Float32Array(Nx*Ny).fill(0);
+            pOld = new Float32Array(Nx*Ny).fill(0);
+            pNew = new Float32Array(Nx*Ny).fill(0);
+            obstacle = new Uint8Array(Nx*Ny).fill(0);
+            cellW = canvas.width / Nx;
+            cellH = canvas.height / Ny;
+            dx = domainSize / Nx;
+            dt = dx / (c * Math.SQRT2) * 0.6;
+            updateSimulationSpeed();
+        }
+        
+        function updateSimulationSpeed() {
+            if (Nx <= 64) stepsPerFrame = simulationSpeed * 2;
+            else if (Nx <= 128) stepsPerFrame = simulationSpeed;
+            else stepsPerFrame = Math.max(1, Math.floor(simulationSpeed / 2));
+        }
+        
+        allocFields();
+        
+        function idx(i,j) { return i + j*Nx; }
+        
+        function makeDampingMask(strength=0.7) {
+            const mask = new Float32Array(Nx*Ny).fill(1.0);
+            const thickness = Math.max(8, Math.floor(0.08 * Math.max(Nx,Ny)));
+            for (let j=0;j<Ny;j++){
+                for (let i=0;i<Nx;i++){
+                    let di = Math.min(i, Nx-1-i);
+                    let dj = Math.min(j, Ny-1-j);
+                    let edge = Math.min(di,dj);
+                    if (edge < thickness) {
+                        const r = (thickness - edge)/thickness;
+                        mask[idx(i,j)] = 1.0 - strength * (r*r);
+                    }
+                }
+            }
+            return mask;
+        }
+        
+        let baseDampStrength = Number(dampEl.value);
+        let dampMask = makeDampingMask(baseDampStrength);
+        
+        function stepForward(tGlobal) {
+            const omega = 2*Math.PI*Number(freqEl.value);
+            const amp = Number(ampEl.value);
+            const sourceTypeVal = sourceType.value;
+            
+            const coef = (c*c) * (dt*dt);
+            
+            for (let j=1;j<Ny-1;j++){
+                let base = j * Nx;
+                for (let i=1;i<Nx-1;i++){
+                    const k = base + i;
+                    if (obstacle[k]) {
+                        pNew[k] = 0;
+                        continue;
+                    }
+                    const lap = (p[k+1] + p[k-1] + p[k+Nx] + p[k-Nx] - 4*p[k]) / (dx*dx);
+                    pNew[k] = 2*p[k] - pOld[k] + coef * lap;
+                }
+            }
+            
+            for (let s of sources){
+                const k = idx(s.i,s.j);
+                if (sourceTypeVal === 'tone') {
+                    const val = amp * Math.sin(omega * tGlobal);
+                    pNew[k] += val;
+                } else if (sourceTypeVal === 'pulse') {
+                    const tau = 1.5e-4;
+                    const dtPhysical = tGlobal - s.t0;
+                    const pulse = amp * Math.exp(- (dtPhysical*dtPhysical) / (tau*tau));
+                    pNew[k] += pulse;
+                } else if (sourceTypeVal === 'sweep') {
+                    const sweepRate = 1000;
+                    const freq = Number(freqEl.value) + sweepRate * tGlobal;
+                    const val = amp * Math.sin(2*Math.PI*freq * tGlobal);
+                    pNew[k] += val;
+                } else if (sourceTypeVal === 'noise') {
+                    const val = amp * (Math.random() * 2 - 1);
+                    pNew[k] += val;
+                }
+            }
+            
+            for (let j=0;j<Ny;j++){
+                for (let i=0;i<Nx;i++){
+                    const k = idx(i,j);
+                    pNew[k] *= dampMask[k];
+                }
+            }
+            
+            const tmp = pOld; pOld = p; p = pNew; pNew = tmp;
+        }
+        
+        function colorMap(v){
+            const cmap = colormapEl.value;
+            const t = Math.max(-1, Math.min(1, v));
+            
+            switch(cmap) {
+                case 'diverging':
+                    if (t > 0){
+                        const r = Math.min(255, Math.floor(80 + 175 * t));
+                        const g = Math.floor(80 * (1 - t));
+                        const b = Math.floor(80 * (1 - t));
+                        return [r,g,b];
+                    } else {
+                        const tt = -t;
+                        const r = Math.floor(80 * (1 - tt));
+                        const g = Math.floor(80 * (1 - tt));
+                        const b = Math.min(255, Math.floor(80 + 175 * tt));
+                        return [r,g,b];
+                    }
+                case 'viridis':
+                    const c = (t + 1) / 2;
+                    const r = Math.floor(255 * Math.sqrt(c));
+                    const g = Math.floor(255 * c*c*c);
+                    const b = Math.floor(255 * (0.5 * Math.sin(c * Math.PI)));
+                    return [r, g, b];
+                case 'plasma':
+                    const p = (t + 1) / 2;
+                    const pr = Math.floor(255 * Math.sin(p * Math.PI));
+                    const pg = Math.floor(255 * Math.sin(p * Math.PI + Math.PI/3));
+                    const pb = Math.floor(255 * Math.sin(p * Math.PI + 2*Math.PI/3));
+                    return [pr, pg, pb];
+                case 'heatmap':
+                    const h = (t + 1) / 2;
+                    const hr = Math.min(255, Math.floor(255 * h));
+                    const hg = Math.floor(255 * h * h);
+                    const hb = Math.floor(255 * h * h * h);
+                    return [hr, hg, hb];
+                default:
+                    const l = Math.floor(255 * (t+1)/2);
+                    return [l,l,l];
+            }
+        }
+        
+        function drawField() {
+            const image = ctx.createImageData(canvas.width, canvas.height);
+            const data = image.data;
+            
+            let maxVal = 1e-6;
+            for (let k=0;k<Nx*Ny;k++){
+                const v = Math.abs(p[k]);
+                if (v > maxVal) maxVal = v;
+            }
+            
+            for (let j=0;j<Ny;j++){
+                for (let i=0;i<Nx;i++){
+                    const k = idx(i,j);
+                    const x0 = Math.floor(i * cellW);
+                    const y0 = Math.floor(j * cellH);
+                    const x1 = Math.floor((i+1) * cellW);
+                    const y1 = Math.floor((j+1) * cellH);
+                    
+                    const val = p[k] / maxVal;
+                    const col = colorMap(val);
+                    
+                    for (let yy=y0; yy<y1; yy++){
+                        for (let xx=x0; xx<x1; xx++){
+                            const idxPix = (yy*canvas.width + xx) * 4;
+                            data[idxPix] = col[0];
+                            data[idxPix+1] = col[1];
+                            data[idxPix+2] = col[2];
+                            data[idxPix+3] = 255;
+                        }
+                    }
+                    
+                    if (obstacle[k]) {
+                        for (let yy=y0; yy<y1; yy++){
+                            for (let xx=x0; xx<x1; xx++){
+                                const idxPix = (yy*canvas.width + xx) * 4;
+                                data[idxPix] = 30;
+                                data[idxPix+1] = 30;
+                                data[idxPix+2] = 30;
+                                data[idxPix+3] = 255;
+                            }
+                        }
+                    }
+                }
+            }
+            ctx.putImageData(image,0,0);
+            
+            drawSources();
+            drawWaveform();
+        }
+        
+        function drawSources() {
+            ctx.fillStyle = '#2b6cff';
+            for (let s of sources) {
+                const x = s.i * cellW + cellW/2;
+                const y = s.j * cellH + cellH/2;
+                ctx.beginPath();
+                ctx.arc(x, y, Math.max(4, cellW/3), 0, 2*Math.PI);
+                ctx.fill();
+                
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(x, y, Math.max(6, cellW/2), 0, 2*Math.PI);
+                ctx.stroke();
+            }
+        }
+        
+        function drawWaveform() {
+            waveformCtx.fillStyle = 'rgba(20, 20, 30, 0.8)';
+            waveformCtx.fillRect(0, 0, waveformCanvas.width, waveformCanvas.height);
+            
+            if (sources.length > 0) {
+                waveformCtx.strokeStyle = '#2b6cff';
+                waveformCtx.lineWidth = 2;
+                waveformCtx.beginPath();
+                
+                const centerY = waveformCanvas.height / 2;
+                const amplitude = 30;
+                
+                for (let x = 0; x < waveformCanvas.width; x++) {
+                    const t = (x / waveformCanvas.width) * 0.01;
+                    const omega = 2*Math.PI*Number(freqEl.value);
+                    const y = centerY + amplitude * Math.sin(omega * t) * Math.exp(-t*100);
+                    
+                    if (x === 0) {
+                        waveformCtx.moveTo(x, y);
+                    } else {
+                        waveformCtx.lineTo(x, y);
+                    }
+                }
+                waveformCtx.stroke();
+            }
+            
+            waveformCtx.fillStyle = '#666';
+            waveformCtx.font = '12px Inter';
+            waveformCtx.fillText('Waveform', 10, 20);
+        }
+        
+        let tSim = 0;
+        function loop(now){
+            if (!running) return;
+            
+            for (let s=0; s<stepsPerFrame; s++){
+                stepForward(tSim);
+                tSim += dt;
+            }
+            drawField();
+            requestAnimationFrame(loop);
+        }
+        
+        let isMouseDown = false;
+        let lastCell = null;
+        let startCell = null;
+        
+        canvas.addEventListener('pointerdown', (ev) => {
+            ev.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = ev.clientX - rect.left;
+            const y = ev.clientY - rect.top;
+            const i = Math.floor(x / cellW);
+            const j = Math.floor(y / cellH);
+            isMouseDown = true;
+            lastCell = [i,j];
+            startCell = [i,j];
+            
+            if (presetShapeEl.value === 'none') {
+                saveStateForUndo();
+                handleDraw(i,j, ev);
+            }
+        });
+        
+        canvas.addEventListener('pointermove', (ev) => {
+            if (!isMouseDown || presetShapeEl.value !== 'none') return;
+            const rect = canvas.getBoundingClientRect();
+            const x = ev.clientX - rect.left;
+            const y = ev.clientY - rect.top;
+            const i = Math.floor(x / cellW);
+            const j = Math.floor(y / cellH);
+            if (i === lastCell?.[0] && j === lastCell?.[1]) return;
+            lastCell = [i,j];
+            handleDraw(i,j, ev);
+        });
+        
+        canvas.addEventListener('pointerup', (ev) => {
+            if (presetShapeEl.value !== 'none') {
+                saveStateForUndo();
+                const rect = canvas.getBoundingClientRect();
+                const x = ev.clientX - rect.left;
+                const y = ev.clientY - rect.top;
+                const i = Math.floor(x / cellW);
+                const j = Math.floor(y / cellH);
+                drawPreset(startCell[0], startCell[1], i, j, drawMode.value);
+            }
+            isMouseDown = false;
+            lastCell = null;
+            startCell = null;
+            if (!running) drawField();
+        });
+        
+        canvas.addEventListener('click', (ev) => {
+            if (drawMode.value === 'source'){
+                const rect = canvas.getBoundingClientRect();
+                const x = ev.clientX - rect.left;
+                const y = ev.clientY - rect.top;
+                const i = Math.floor(x / cellW);
+                const j = Math.floor(y / cellH);
+                sources.push({i:i, j:j, t0:tSim});
+                if (!running) drawField();
+            }
+        });
+        
+        function handleDraw(i,j, ev) {
+            if (i<0 || i>=Nx || j<0 || j>=Ny) return;
+            const k = idx(i,j);
+            const mode = drawMode.value;
+            
+            if (mode === 'wall'){
+                obstacle[k] = 1;
+            } else if (mode === 'erase'){
+                obstacle[k] = 0;
+            }
+            if (!running) drawField();
+        }
+        
+        function drawPreset(i0, j0, i1, j1, mode) {
+            const shape = presetShapeEl.value;
+            const value = (mode === 'erase') ? 0 : 1;
+            
+            switch(shape) {
+                case 'rect':
+                    const iMin = Math.min(i0, i1);
+                    const iMax = Math.max(i0, i1);
+                    const jMin = Math.min(j0, j1);
+                    const jMax = Math.max(j0, j1);
+                    for (let j = jMin; j <= jMax; j++) {
+                        for (let i = iMin; i <= iMax; i++) {
+                            if (i<0 || i>=Nx || j<0 || j>=Ny) continue;
+                            obstacle[idx(i,j)] = value;
+                        }
+                    }
+                    break;
+                    
+                case 'circle':
+                    const ci = Math.floor((i0+i1)/2);
+                    const cj = Math.floor((j0+j1)/2);
+                    const ri = Math.abs(i1-i0)/2;
+                    const rj = Math.abs(j1-j0)/2;
+                    if (ri === 0 || rj === 0) return;
+                    for (let j = 0; j < Ny; j++) {
+                        for (let i = 0; i < Nx; i++) {
+                            if (((i-ci)/ri)**2 + ((j-cj)/rj)**2 < 1) {
+                                if (i<0 || i>=Nx || j<0 || j>=Ny) continue;
+                                obstacle[idx(i,j)] = value;
+                            }
+                        }
+                    }
+                    break;
+                    
+                case 'triangle':
+                    const ti0 = i0, ti1 = i1, tj0 = j0, tj1 = j1;
+                    const tcx = (ti0 + ti1) / 2;
+                    const tcy = tj0;
+                    const base = Math.abs(ti1 - ti0);
+                    const height = Math.abs(tj1 - tj0);
+                    
+                    for (let j = Math.min(tj0, tj1); j <= Math.max(tj0, tj1); j++) {
+                        const y = j - tcy;
+                        const width = base * (1 - Math.abs(y) / height);
+                        for (let i = tcx - width/2; i <= tcx + width/2; i++) {
+                            if (i<0 || i>=Nx || j<0 || j>=Ny) continue;
+                            obstacle[idx(Math.floor(i), j)] = value;
+                        }
+                    }
+                    break;
+            }
+        }
+        
+        // Preset scenarios
+        presetEmptyBtn.addEventListener('click', () => {
+            saveStateForUndo();
+            obstacle.fill(0);
+            sources.length = 0;
+            if (!running) drawField();
+        });
+        
+        presetRoomBtn.addEventListener('click', () => {
+            saveStateForUndo();
+            obstacle.fill(0);
+            const thickness = Math.max(2, Math.floor(Nx * 0.1));
+            for (let j=0;j<Ny;j++){
+                for (let i=0;i<Nx;i++){
+                    if (i < thickness || i >= Nx-thickness || j < thickness || j >= Ny-thickness) {
+                        obstacle[idx(i,j)] = 1;
+                    }
+                }
+            }
+            if (!running) drawField();
+        });
+        
+        presetMazeBtn.addEventListener('click', () => {
+            saveStateForUndo();
+            obstacle.fill(0);
+            const cellSize = Math.max(4, Math.floor(Nx / 16));
+            for (let j=0;j<Ny;j+=cellSize){
+                for (let i=0;i<Nx;i+=cellSize){
+                    if ((i/cellSize + j/cellSize) % 2 === 0) {
+                        for (let dj=0;dj<cellSize-1;dj++){
+                            for (let di=0;di<cellSize-1;di++){
+                                if (i+di < Nx && j+dj < Ny) {
+                                    obstacle[idx(i+di, j+dj)] = 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (!running) drawField();
+        });
+        
+        presetWaveguideBtn.addEventListener('click', () => {
+            saveStateForUndo();
+            obstacle.fill(0);
+            const thickness = Math.max(3, Math.floor(Ny * 0.2));
+            for (let j=0;j<thickness;j++){
+                for (let i=0;i<Nx;i++){
+                    obstacle[idx(i,j)] = 1;
+                    obstacle[idx(i,Ny-1-j)] = 1;
+                }
+            }
+            if (!running) drawField();
+        });
+        
+        presetResonatorBtn.addEventListener('click', () => {
+            saveStateForUndo();
+            obstacle.fill(0);
+            const centerX = Math.floor(Nx/2);
+            const centerY = Math.floor(Ny/2);
+            const radius = Math.floor(Math.min(Nx,Ny) * 0.3);
+            
+            for (let j=0;j<Ny;j++){
+                for (let i=0;i<Nx;i++){
+                    const dist = Math.sqrt((i-centerX)**2 + (j-centerY)**2);
+                    if (Math.abs(dist - radius) < 2) {
+                        obstacle[idx(i,j)] = 1;
+                    }
+                }
+            }
+            if (!running) drawField();
+        });
+        
+        presetObstaclesBtn.addEventListener('click', () => {
+            saveStateForUndo();
+            obstacle.fill(0);
+            const numObstacles = 8;
+            for (let k=0;k<numObstacles;k++){
+                const x = Math.floor(Math.random() * Nx);
+                const y = Math.floor(Math.random() * Ny);
+                const size = Math.floor(Math.random() * 8) + 3;
+                
+                for (let j=Math.max(0,y-size);j<Math.min(Ny,y+size);j++){
+                    for (let i=Math.max(0,x-size);i<Math.min(Nx,x+size);i++){
+                        if (Math.sqrt((i-x)**2 + (j-y)**2) < size) {
+                            obstacle[idx(i,j)] = 1;
+                        }
+                    }
+                }
+            }
+            if (!running) drawField();
+        });
+        
+        // Controls
+        runBtn.addEventListener('click', () => {
+            if (!running){
+                running = true;
+                statusIndicator.classList.add('active');
+                if(tSim === 0) {
+                    p.fill(0);
+                    pOld.fill(0);
+                    pNew.fill(0);
+                }
+                requestAnimationFrame(loop);
+            }
+        });
+        
+        pauseBtn.addEventListener('click', () => {
+            running = false;
+            statusIndicator.classList.remove('active');
+        });
+        
+        clearBtn.addEventListener('click', () => {
+            saveStateForUndo();
+            obstacle.fill(0);
+            if (!running) drawField();
+        });
+        
+        clearSourcesBtn.addEventListener('click', () => {
+            sources.length = 0;
+            if (!running) drawField();
+        });
+        
+        resetBtn.addEventListener('click', () => {
+            p.fill(0); pOld.fill(0); pNew.fill(0); sources.length = 0; tSim = 0;
+            undoStack = [];
+            redoStack = [];
+            updateUndoRedoButtons();
+            statusIndicator.classList.remove('active');
+            if (!running) drawField();
+        });
+        
+        // Audio functions
+        async function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            if (audioContext.state === 'suspended') {
+                await audioContext.resume();
+            }
+            
+            oscillator = audioContext.createOscillator();
+            gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(Number(freqEl.value), audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            
+            oscillator.start();
+        }
+        
+        function updateAudioFrequency() {
+            if (oscillator && audioEnabled) {
+                oscillator.frequency.setValueAtTime(Number(freqEl.value), audioContext.currentTime);
+            }
+        }
+        
+        function updateAudioVolume() {
+            if (gainNode && audioEnabled && running) {
+                gainNode.gain.setValueAtTime(Number(ampEl.value) * 0.1, audioContext.currentTime);
+            }
+        }
+        
+        function stopAudio() {
+            if (gainNode) {
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+            }
+        }
+        
+        // Export/Import
+        exportBtn.addEventListener('click', () => {
+            const data = {
+                resolution: { Nx, Ny },
+                obstacles: Array.from(obstacle),
+                sources: sources,
+                timestamp: new Date().toISOString()
+            };
+            const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `acoustic_simulation_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+        
+        importBtn.addEventListener('click', () => importFileEl.click());
+        importFileEl.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (data.resolution && data.obstacles) {
+                        saveStateForUndo();
+                        Nx = data.resolution.Nx;
+                        Ny = data.resolution.Ny;
+                        const resOption = Array.from(resEl.options).find(o => o.value == Nx);
+                        if(resOption) resEl.value = resOption.value;
+                        
+                        restartSimulation();
+                        obstacle = new Uint8Array(data.obstacles);
+                        if (data.sources) {
+                            sources = data.sources;
+                        }
+                        if (!running) drawField();
+                    } else {
+                        alert('Invalid simulation file format.');
+                    }
+                } catch (err) {
+                    alert('Error reading simulation file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        });
+        
+        screenshotBtn.addEventListener('click', () => {
+            const link = document.createElement('a');
+            link.download = `acoustic_simulation_${Date.now()}.png`;
+            link.href = canvas.toDataURL();
+            link.click();
+        });
+        
+        recordBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                try {
+                    const stream = canvas.captureStream(30);
+                    mediaRecorder = new MediaRecorder(stream, {mimeType: 'video/webm'});
+                    const chunks = [];
+                    
+                    mediaRecorder.ondataavailable = (e) => chunks.push(e.data);
+                    mediaRecorder.onstop = () => {
+                        const blob = new Blob(chunks, {type: 'video/webm'});
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `acoustic_simulation_${Date.now()}.webm`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                    };
+                    
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordBtn.textContent = '録画停止';
+                    recordBtn.style.background = 'linear-gradient(135deg, #ff4444 0%, #cc0000 100%)';
+                } catch (err) {
+                    alert('録画を開始できません: ' + err.message);
+                }
+            } else {
+                if (mediaRecorder && mediaRecorder.state === 'recording') {
+                    mediaRecorder.stop();
+                }
+                isRecording = false;
+                recordBtn.textContent = '録画開始';
+                recordBtn.style.background = 'linear-gradient(135deg, #444 0%, #333 100%)';
+            }
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (ev) => {
+            if (ev.code === 'Space') {
+                ev.preventDefault();
+                if (running) {
+                    pauseBtn.click();
+                } else {
+                    runBtn.click();
+                }
+            } else if (ev.code === 'KeyR' && ev.ctrlKey) {
+                ev.preventDefault();
+                resetBtn.click();
+            } else if (ev.code === 'KeyZ' && ev.ctrlKey) {
+                ev.preventDefault();
+                undoBtn.click();
+            } else if (ev.code === 'KeyY' && ev.ctrlKey) {
+                ev.preventDefault();
+                redoBtn.click();
+            }
+        });
+        
+        function restartSimulation(){
+            allocFields();
+            dampMask = makeDampingMask(baseDampStrength);
+            p.fill(0); pOld.fill(0); pNew.fill(0);
+            sources.length = 0;
+            tSim = 0;
+            undoStack = [];
+            redoStack = [];
+            updateUndoRedoButtons();
+            if (!running) drawField();
+        }
+        
+        // Initialize
+        updateUndoRedoButtons();
+        drawField();
+        
+        // Add some initial sources for demonstration
+        sources.push({i: Math.floor(Nx/2), j: Math.floor(Ny/2), t0: 0});
+        if (!running) drawField();
+    </script>
+
+</body></html>

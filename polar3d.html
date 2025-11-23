@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced Pro: 3D Mic Array Simulator (Fixed Mic Orientation)</title>
+    <!-- Three.js via CDN -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            background: #0f172a;
+            color: #e5e7eb;
+            overflow: hidden;
+        }
+        /* --- Layout --- */
+        #sidebar {
+            width: 340px;
+            padding: 16px;
+            background: #020617;
+            border-right: 1px solid #1f2937;
+            box-sizing: border-box;
+            overflow-y: auto;
+            flex-shrink: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+            overflow-y: auto;
+            background: #0f172a;
+        }
+        .top-pane {
+            display: flex;
+            gap: 16px;
+            height: 400px;
+            flex-shrink: 0;
+        }
+        .bottom-pane {
+            display: flex;
+            flex: 1;
+            min-height: 200px;
+            gap: 16px;
+        }
+
+        /* --- Components --- */
+        .canvas-container {
+            flex: 1;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+        .container-header {
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(30, 41, 59, 0.9);
+            z-index: 5;
+        }
+        .canvas-content {
+            flex: 1;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #0f172a;
+        }
+        .canvas-title { font-size: 13px; color: #93c5fd; font-weight: bold; }
+        canvas { border-radius: 4px; cursor: crosshair; }
+        
+        /* --- Controls --- */
+        h1 { font-size: 16px; margin: 0; color: #fff; }
+        h2 { font-size: 12px; margin: 8px 0 4px; color: #94a3b8; text-transform: uppercase; border-bottom: 1px solid #334155; padding-bottom: 2px; }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 12px; color: #cbd5e1; display: flex; justify-content: space-between; }
+        input[type="range"] { width: 100%; margin: 2px 0; accent-color: #3b82f6; }
+        input[type="number"] {
+            background: #0f172a; border: 1px solid #475569; color: #fff;
+            border-radius: 4px; padding: 2px 6px; width: 50px; font-size: 12px;
+        }
+        .row { display: flex; gap: 8px; align-items: center; }
+        .btn-row { display: flex; gap: 4px; flex-wrap: wrap; }
+        button {
+            background: #334155; color: #e2e8f0; border: 1px solid #475569;
+            border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover { background: #475569; }
+        button.active { background: #2563eb; border-color: #3b82f6; color: #fff; }
+        
+        .metrics-box {
+            background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+            padding: 8px; font-size: 11px; display: grid;
+            grid-template-columns: 1fr 1fr; gap: 4px 8px;
+        }
+        .metric-val { font-weight: bold; color: #6ee7b7; }
+        .note { font-size: 10px; color: #94a3b8; margin-top: 4px; }
+        
+        /* Legend for Phase */
+        .phase-legend {
+            display: flex; gap: 10px; font-size: 10px; align-items: center; margin-top: 4px;
+        }
+        .phase-dot { width: 8px; height: 2px; display: inline-block; vertical-align: middle; }
+        
+        /* View overlays */
+        .view-tabs { display: flex; background: #0f172a; border-radius: 4px; padding: 2px; }
+        .view-tabs button { border: none; background: transparent; color: #94a3b8; }
+        .view-tabs button.active { background: #334155; color: #fff; }
+        .view-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; }
+        .view-overlay.show { display: block; }
+        
+        #tooltip {
+            position: fixed; pointer-events: none; background: rgba(0,0,0,0.9);
+            color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px;
+            border: 1px solid #475569; z-index: 100; display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div>
+        <h1>Mic Array Sim 3D</h1>
+        <div class="note">マイク向き固定 / アレイ軸回転</div>
+    </div>
+
+    <!-- Preset Controls -->
+    <div class="control-group">
+        <h2>1. マイクユニット設定</h2>
+        <div class="row" style="font-size:11px;">
+            <input type="checkbox" id="linkPattern" checked> <label for="linkPattern">前後リンク</label>
+        </div>
+        <div class="row">
+            <label>Front (α, β)</label>
+            <input id="alpha1" type="number" step="0.05" value="0.5">
+            <input id="beta1" type="number" step="0.05" value="0.5">
+        </div>
+        <div class="row">
+            <label>Rear (α, β)</label>
+            <input id="alpha2" type="number" step="0.05" value="0.5" disabled>
+            <input id="beta2" type="number" step="0.05" value="0.5" disabled>
+        </div>
+        <div class="btn-row">
+            <button class="preset" data-a="1" data-b="0">Omni</button>
+            <button class="preset" data-a="0.5" data-b="0.5">Cardioid</button>
+            <button class="preset" data-a="0" data-b="1">Fig-8</button>
+            <button class="preset" data-a="0.25" data-b="0.75">Hyper</button>
+        </div>
+    </div>
+
+    <!-- Array Config -->
+    <div class="control-group">
+        <h2>2. アレイ構成 & モード</h2>
+        <div class="btn-row" id="modeSelect">
+            <button class="mode-btn" data-val="p1">Mic1</button>
+            <button class="mode-btn" data-val="p2">Mic2</button>
+            <button class="mode-btn active" data-val="diff">差 (Diff)</button>
+            <button class="mode-btn" data-val="sum">和 (Sum)</button>
+        </div>
+        
+        <label style="margin-top:6px;">マイク間隔 D: <span id="valD">20</span> mm</label>
+        <input id="D" type="range" min="0" max="300" step="1" value="20">
+        
+        <label>アレイ回転 φ: <span id="valPhi">0</span>°</label>
+        <input id="orientation" type="range" min="0" max="180" step="1" value="0">
+    </div>
+
+    <!-- Analysis Freq -->
+    <div class="control-group">
+        <h2>3. 解析周波数</h2>
+        <label>Frequency: <span id="valFreq">1000</span> Hz</label>
+        <input id="freq" type="range" min="100" max="20000" step="10" value="1000">
+    </div>
+
+    <!-- Metrics Panel -->
+    <div class="control-group">
+        <h2>4. 性能メトリクス</h2>
+        <div class="metrics-box">
+            <div class="metric-item"><span>Front Sens:</span> <span class="metric-val" id="mSens">-</span></div>
+            <div class="metric-item"><span>DI (指数):</span> <span class="metric-val" id="mDI">-</span></div>
+            <div class="metric-item"><span>F/B Ratio:</span> <span class="metric-val" id="mFB">-</span></div>
+            <div class="metric-item"><span>-3dB Beam:</span> <span class="metric-val" id="mBeam">-</span></div>
+        </div>
+    </div>
+
+    <div class="control-group">
+        <h2>5. ツール</h2>
+        <div class="row">
+            <input type="checkbox" id="normPlot"> <label for="normPlot" style="font-size:11px;">最大値正規化 (Plot Only)</label>
+        </div>
+    </div>
+</div>
+
+<div id="main">
+    <!-- Top: Polar & 3D/Response -->
+    <div class="top-pane">
+        <!-- Polar Plot (2D) -->
+        <div class="canvas-container" style="flex:1;">
+            <div class="container-header" style="flex-direction:column; align-items:flex-start; gap:4px;">
+                <div style="display:flex; justify-content:space-between; width:100%;">
+                    <span class="canvas-title">2D Polar (XZ Plane)</span>
+                    <div class="note" style="margin:0;">f = <span id="lblFreqPolar">1000</span>Hz</div>
+                </div>
+                <!-- Phase Legend -->
+                <div class="phase-legend">
+                    <div><span class="phase-dot" style="background:#f97316; border:1px solid #f97316;"></span> Positive (+)</div>
+                    <div><span class="phase-dot" style="border-bottom:1px dashed #06b6d4; background:transparent; height:0;"></span> Negative (-)</div>
+                </div>
+            </div>
+            <div class="canvas-content">
+                <canvas id="polarCanvas" width="350" height="350"></canvas>
+            </div>
+        </div>
+
+        <!-- Right Pane: Switchable (Response / 3D) -->
+        <div class="canvas-container" style="flex:1;">
+            <div class="container-header">
+                <div class="view-tabs">
+                    <button class="view-tab active" data-target="view-resp">Freq Resp</button>
+                    <button class="view-tab" data-target="view-3d">3D Pattern</button>
+                </div>
+                <div id="legend-resp" style="display:flex; gap:8px; font-size:10px;">
+                    <span style="color:#10b981">● 0°</span>
+                    <span style="color:#ef4444">● 180°</span>
+                    <span style="color:#3b82f6">● DI</span>
+                </div>
+                <div id="legend-3d" style="display:none; font-size:10px; color:#cbd5e1;">
+                    Drag to Rotate / Scroll to Zoom
+                </div>
+            </div>
+            
+            <div class="canvas-content" style="position:relative;">
+                <!-- View 1: Frequency Response -->
+                <div id="view-resp" class="view-overlay show">
+                    <canvas id="respCanvas" width="450" height="350" style="width:100%; height:100%;"></canvas>
+                </div>
+                <!-- View 2: 3D Three.js -->
+                <div id="view-3d" class="view-overlay">
+                    <div id="three-container" style="width:100%; height:100%;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom: Heatmap -->
+    <div class="bottom-pane">
+        <div class="canvas-container" style="width:100%;">
+            <div class="container-header">
+                <span class="canvas-title">Directivity Heatmap</span>
+                <span class="note">X: Frequency / Y: Angle (-180 to +180)</span>
+            </div>
+            <div class="canvas-content" style="align-items: flex-start;">
+                <canvas id="mapCanvas" width="800" height="220" style="width:100%; height:100%;"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- Main Logic -->
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// --- Constants & Globals ---
+const C_SOUND = 343.0;
+let currentMode = 'diff';
+let is3DActive = false;
+
+// --- Three.js Globals ---
+let scene, camera, renderer, controls, patternMesh;
+const threeContainer = document.getElementById('three-container');
+
+// --- Elements ---
+const els = {
+    alpha1: document.getElementById('alpha1'),
+    beta1: document.getElementById('beta1'),
+    alpha2: document.getElementById('alpha2'),
+    beta2: document.getElementById('beta2'),
+    link: document.getElementById('linkPattern'),
+    D: document.getElementById('D'),
+    orient: document.getElementById('orientation'),
+    freq: document.getElementById('freq'),
+    valD: document.getElementById('valD'),
+    valPhi: document.getElementById('valPhi'),
+    valFreq: document.getElementById('valFreq'),
+    lblFreqPolar: document.getElementById('lblFreqPolar'),
+    normPlot: document.getElementById('normPlot'),
+    tooltip: document.getElementById('tooltip'),
+    mSens: document.getElementById('mSens'),
+    mDI: document.getElementById('mDI'),
+    mFB: document.getElementById('mFB'),
+    mBeam: document.getElementById('mBeam'),
+    tabs: document.querySelectorAll('.view-tab'),
+    views: document.querySelectorAll('.view-overlay'),
+    lResp: document.getElementById('legend-resp'),
+    l3d: document.getElementById('legend-3d'),
+};
+
+const cvs = {
+    polar: document.getElementById('polarCanvas').getContext('2d'),
+    resp: document.getElementById('respCanvas').getContext('2d'),
+    map: document.getElementById('mapCanvas').getContext('2d')
+};
+
+// --- Event Listeners ---
+
+els.tabs.forEach(btn => {
+    btn.addEventListener('click', () => {
+        els.tabs.forEach(b => b.classList.remove('active'));
+        els.views.forEach(v => v.classList.remove('show'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.target).classList.add('show');
+        
+        if(btn.dataset.target === 'view-3d') {
+            is3DActive = true;
+            els.lResp.style.display = 'none';
+            els.l3d.style.display = 'block';
+            setTimeout(onWindowResize, 10);
+        } else {
+            is3DActive = false;
+            els.lResp.style.display = 'flex';
+            els.l3d.style.display = 'none';
+        }
+        update();
+    });
+});
+
+document.querySelectorAll('.preset').forEach(b => b.addEventListener('click', e => {
+    const a = e.target.dataset.a, b_val = e.target.dataset.b;
+    els.alpha1.value = a; els.beta1.value = b_val;
+    if(els.link.checked) { els.alpha2.value = a; els.beta2.value = b_val; }
+    update();
+}));
+
+document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', e => {
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+    currentMode = e.target.dataset.val;
+    update();
+}));
+
+[els.D, els.orient, els.freq, els.alpha1, els.beta1, els.alpha2, els.beta2, els.link, els.normPlot]
+    .forEach(el => el.addEventListener('input', update));
+
+window.addEventListener('resize', onWindowResize);
+
+// --- Core Math ---
+
+function getParams() {
+    let a1 = parseFloat(els.alpha1.value);
+    let b1 = parseFloat(els.beta1.value);
+    if(els.link.checked) {
+        els.alpha2.value = a1; els.beta2.value = b1;
+        els.alpha2.disabled = true; els.beta2.disabled = true;
+        return { a1, b1, a2:a1, b2:b1, D: parseFloat(els.D.value)/1000, phi: parseFloat(els.orient.value), mode: currentMode };
+    } else {
+        els.alpha2.disabled = false; els.beta2.disabled = false;
+        return { 
+            a1, b1, 
+            a2: parseFloat(els.alpha2.value), b2: parseFloat(els.beta2.value),
+            D: parseFloat(els.D.value)/1000, phi: parseFloat(els.orient.value), mode: currentMode 
+        };
+    }
+}
+
+// 複素数を返すように変更 + マイク向き固定・アレイ回転ロジック
+function calcComplex(th, k, p) {
+    // 1. Directivity (Gain):
+    // マイクの向きは常に「正面(Global 0°)」固定です。
+    // 音源角度 th に対して指向性ゲインが決まります。アレイの回転 phi は影響しません。
+    const g1 = p.a1 + p.b1 * Math.cos(th);
+    const g2 = p.a2 + p.b2 * Math.cos(th);
+    
+    // 2. Phase (Delay):
+    // アレイの軸は回転します。
+    // 音源角度 th と アレイ回転角 phi の差分 (effective theta) が遅延に関与します。
+    const effTh = th - (p.phi * Math.PI / 180);
+    const d_phase = k * (p.D/2) * Math.cos(effTh);
+
+    // 位相を適用 (マイク単体のゲインに対して位相回転を与える)
+    const r1 = g1 * Math.cos(d_phase);
+    const i1 = g1 * Math.sin(d_phase);
+    const r2 = g2 * Math.cos(-d_phase);
+    const i2 = g2 * Math.sin(-d_phase);
+
+    let R, I;
+    if (p.mode === 'sum') { R=r1+r2; I=i1+i2; }
+    else if (p.mode === 'diff') { R=r1-r2; I=i1-i2; }
+    else if (p.mode === 'p1') { R=r1; I=i1; }
+    else { R=r2; I=i2; }
+
+    const mag = Math.sqrt(R*R + I*I);
+    return { mag, R, I };
+}
+
+function doCalc2D(f, p) {
+    const k = 2 * Math.PI * f / C_SOUND;
+    const res = {
+        mags: new Float32Array(360),
+        phaseFlags: new Uint8Array(360), // 0:Pos, 1:Neg
+        max: 0, front: 0, back: 0, di: 0, beam: 0
+    };
+    let sumSq = 0;
+
+    for(let i=0; i<360; i++){
+        const th = i * Math.PI / 180;
+        const c = calcComplex(th, k, p);
+        res.mags[i] = c.mag;
+        
+        // 位相判定 (Realが負 または 位相が90度以上)
+        const ph = Math.atan2(c.I, c.R);
+        if(Math.abs(ph) > Math.PI/2) {
+            res.phaseFlags[i] = 1; // Negative
+        } else {
+            res.phaseFlags[i] = 0; // Positive
+        }
+
+        if(c.mag > res.max) res.max = c.mag;
+        sumSq += c.mag*c.mag;
+    }
+    
+    res.front = res.mags[0];
+    res.back = res.mags[180];
+    const meanSq = sumSq / 360;
+    const pFront = res.front*res.front;
+    res.di = (pFront > 1e-8 && meanSq > 1e-8) ? 10*Math.log10(pFront/meanSq) : -99;
+    
+    const thr = res.max * 0.707;
+    let bw = 0;
+    for(let i=0; i<360; i++) if(res.mags[i]>=thr) bw++;
+    res.beam = bw;
+    return res;
+}
+
+// --- Update Loop ---
+
+function update() {
+    const params = getParams();
+    const f = parseFloat(els.freq.value);
+
+    els.valD.textContent = (params.D * 1000).toFixed(0);
+    els.valPhi.textContent = params.phi;
+    els.valFreq.textContent = f;
+    els.lblFreqPolar.textContent = f;
+
+    const curr = doCalc2D(f, params);
+    updateMetrics(curr);
+
+    drawPolar(curr, params, els.normPlot.checked);
+
+    if(is3DActive) {
+        update3D(f, params, els.normPlot.checked ? curr.max : 2.0);
+    } else {
+        const freqs = [];
+        const g0 = [], g180 = [], dis = [];
+        const minF = 100, maxF = 20000, steps = 100;
+        for(let i=0; i<=steps; i++){
+            const fr = minF * Math.pow(maxF/minF, i/steps);
+            const r = doCalc2D(fr, params);
+            freqs.push(fr);
+            g0.push(r.front);
+            g180.push(r.back);
+            dis.push(r.di);
+        }
+        drawResponse(freqs, g0, g180, dis, f);
+    }
+
+    drawHeatmap(params);
+}
+
+// --- Visualization Helpers ---
+
+function updateMetrics(d) {
+    const sDb = d.front > 1e-5 ? (20*Math.log10(d.front)).toFixed(1) : "-Inf";
+    els.mSens.textContent = `${sDb} dB`;
+    els.mDI.textContent = d.di > -90 ? d.di.toFixed(1) + " dB" : "-";
+    let fb = "0.0";
+    if (d.front > 1e-5) {
+        if (d.back < 1e-6) fb = "> 60";
+        else fb = (20*Math.log10(d.front/d.back)).toFixed(1);
+    }
+    els.mFB.textContent = fb + " dB";
+    els.mBeam.textContent = d.beam + "°";
+}
+
+function drawPolar(curr, p, norm) {
+    const ctx = cvs.polar;
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const cx = w/2, cy = h/2;
+    const rMax = w*0.45;
+    
+    ctx.clearRect(0,0,w,h);
+    
+    // Grid
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#334155'; ctx.lineWidth = 1; 
+    [0.33, 0.66, 1].forEach(r => { ctx.beginPath(); ctx.arc(cx, cy, rMax*r, 0, 2*Math.PI); ctx.stroke(); });
+    ctx.beginPath();
+    for(let i=0; i<12; i++) {
+        const th = i*Math.PI/6;
+        ctx.moveTo(cx, cy); ctx.lineTo(cx+rMax*Math.sin(th), cy-rMax*Math.cos(th));
+    }
+    ctx.stroke();
+    
+    ctx.fillStyle = '#64748b'; ctx.font = '10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText("0°", cx, cy-rMax-4); ctx.fillText("90°", cx+rMax+10, cy+3);
+    
+    // Plot
+    let maxVal = norm ? curr.max : 2.0;
+    if(maxVal < 1e-5) maxVal = 1;
+
+    ctx.lineWidth = 2;
+
+    for(let i=0; i<360; i++){
+        const nextI = (i+1)%360;
+        const th1 = i * Math.PI / 180;
+        const th2 = nextI * Math.PI / 180;
+        
+        const r1 = (curr.mags[i] / maxVal) * rMax;
+        const r2 = (curr.mags[nextI] / maxVal) * rMax;
+        
+        const x1 = cx + r1 * Math.sin(th1);
+        const y1 = cy - r1 * Math.cos(th1);
+        const x2 = cx + r2 * Math.sin(th2);
+        const y2 = cy - r2 * Math.cos(th2);
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        
+        // Polarity check based on phaseFlags
+        if(curr.phaseFlags[i] === 1) {
+            // Negative: Cyan Dashed
+            ctx.strokeStyle = '#06b6d4'; 
+            ctx.setLineDash([3, 3]);
+        } else {
+            // Positive: Orange Solid
+            ctx.strokeStyle = '#f97316';
+            ctx.setLineDash([]);
+        }
+        ctx.stroke();
+    }
+    
+    ctx.setLineDash([]);
+}
+
+function drawResponse(freqs, g0, g180, dis, curF) {
+    const ctx = cvs.resp;
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const pad = {t:20, r:40, b:30, l:40};
+    ctx.clearRect(0,0,w,h);
+    
+    const minF=100, maxF=20000;
+    const mapX = f => pad.l + (Math.log10(f/minF)/Math.log10(maxF/minF))*(w-pad.l-pad.r);
+    const minDb=-40, maxDb=10;
+    const mapY = v => h - pad.b - ((v - minDb)/(maxDb-minDb))*(h-pad.b-pad.t);
+
+    ctx.strokeStyle = '#334155'; ctx.lineWidth=1; ctx.beginPath();
+    [100, 1000, 10000].forEach(f=>{ const x = mapX(f); ctx.moveTo(x, pad.t); ctx.lineTo(x, h-pad.b); });
+    for(let d=minDb; d<=maxDb; d+=10){ const y = mapY(d); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y); }
+    ctx.stroke();
+
+    const cx = mapX(curF);
+    ctx.strokeStyle = '#ef4444'; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.moveTo(cx, pad.t); ctx.lineTo(cx, h-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+
+    const plotLine = (arr, color) => {
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth=2;
+        for(let i=0; i<freqs.length; i++){
+            const x = mapX(freqs[i]);
+            let val = arr[i];
+            val = (val > 1e-6) ? 20*Math.log10(val) : -100;
+            const y = mapY(val);
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+    };
+
+    plotLine(g0, '#10b981');
+    plotLine(g180, '#ef4444');
+    ctx.beginPath(); ctx.strokeStyle='#3b82f6';
+    for(let i=0; i<freqs.length; i++){
+        const x = mapX(freqs[i]);
+        const y = mapY(dis[i]); 
+        if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+}
+
+function drawHeatmap(p) {
+    const ctx = cvs.map;
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const fSteps = 80; 
+    const aSteps = 36;
+    
+    const getColor = (db) => {
+        let t = (db + 30) / 30; 
+        if(t<0) t=0; if(t>1) t=1;
+        const hue = 240 * (1-t);
+        return `hsl(${hue}, 80%, 50%)`;
+    };
+
+    const minF=100, maxF=20000;
+    const cellW = w / fSteps;
+    const cellH = h / aSteps;
+
+    for(let i=0; i<fSteps; i++) {
+        const f = minF * Math.pow(maxF/minF, (i+0.5)/fSteps);
+        const k = 2 * Math.PI * f / C_SOUND;
+        
+        let maxM = 0;
+        for(let ti=0; ti<360; ti+=10) {
+            const tRad = ti*Math.PI/180;
+            const m = calcComplex(tRad, k, p).mag;
+            if(m > maxM) maxM = m;
+        }
+
+        for(let j=0; j<aSteps; j++) {
+            const deg = -180 + (j * 360 / aSteps);
+            const rad = deg * Math.PI / 180;
+            const res = calcComplex(rad, k, p);
+            
+            const normVal = (maxM > 1e-6) ? res.mag/maxM : 0;
+            const db = (normVal > 1e-4) ? 20*Math.log10(normVal) : -60;
+            ctx.fillStyle = getColor(db);
+            ctx.fillRect(i*cellW, j*cellH, cellW+1, cellH+1);
+        }
+    }
+    ctx.fillStyle = "rgba(255,255,255,0.8)"; ctx.font = "10px sans-serif";
+    ctx.fillText("-180°", 5, 10); ctx.fillText("0° (Front)", 5, h/2 + 3); ctx.fillText("+180°", 5, h-5);
+}
+
+// --- 3D Visualization Logic ---
+
+function init3D() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a);
+
+    camera = new THREE.PerspectiveCamera(45, threeContainer.clientWidth / threeContainer.clientHeight, 0.1, 100);
+    camera.position.set(3, 2, 3);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(threeContainer.clientWidth, threeContainer.clientHeight);
+    threeContainer.appendChild(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    
+    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+    dirLight.position.set(5, 5, 5);
+    scene.add(dirLight);
+
+    const axesHelper = new THREE.AxesHelper(2);
+    scene.add(axesHelper);
+    
+    const micGeo = new THREE.SphereGeometry(0.05);
+    const micMat = new THREE.MeshBasicMaterial({color: 0x94a3b8});
+    const m1 = new THREE.Mesh(micGeo, micMat); 
+    const m2 = new THREE.Mesh(micGeo, micMat); 
+    m1.name = 'mic1'; m2.name = 'mic2';
+    scene.add(m1); scene.add(m2);
+
+    const geom = new THREE.SphereGeometry(1, 128, 64); 
+    geom.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(geom.attributes.position.count * 3), 3));
+    geom.userData.originalPosition = geom.attributes.position.clone();
+
+    const mat = new THREE.MeshStandardMaterial({ 
+        color: 0xffffff, 
+        vertexColors: true, 
+        roughness: 0.4, metalness: 0.1
+    });
+    
+    patternMesh = new THREE.Mesh(geom, mat);
+    scene.add(patternMesh);
+
+    const animate = () => {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    };
+    animate();
+}
+
+function update3D(f, p, maxScaleRef) {
+    if(!patternMesh) return;
+
+    // マイクの可視位置の更新（回転に追従）
+    const m1 = scene.getObjectByName('mic1');
+    const m2 = scene.getObjectByName('mic2');
+    if(m1 && m2) {
+        const phiRad = p.phi * Math.PI / 180;
+        const d2 = 0.2; // 画面上の見た目の距離 (一定)
+        // Phi=0(Front) -> Z軸上に配置
+        // Phi=90(Right) -> X軸上に配置
+        const mx = d2 * Math.sin(phiRad);
+        const mz = d2 * Math.cos(phiRad);
+        m1.position.set(mx, 0, mz); 
+        m2.position.set(-mx, 0, -mz);
+    }
+
+    const positions = patternMesh.geometry.attributes.position;
+    const colors = patternMesh.geometry.attributes.color;
+    const originalPositions = patternMesh.geometry.userData.originalPosition;
+    
+    const count = originalPositions.count;
+    const k = 2 * Math.PI * f / C_SOUND;
+    const phiRad = p.phi * Math.PI / 180;
+    
+    // アレイ軸ベクトル
+    const axX = Math.sin(phiRad);
+    const axZ = Math.cos(phiRad);
+    
+    const dummyV = new THREE.Vector3();
+    const lutColor = new THREE.Color();
+
+    for (let i = 0; i < count; i++) {
+        const ox = originalPositions.getX(i);
+        const oy = originalPositions.getY(i);
+        const oz = originalPositions.getZ(i);
+        dummyV.set(ox, oy, oz).normalize();
+        
+        // 1. Directivity Gain: (Fixed Orientation, always Front/Z-axis)
+        // 3D空間ではZ軸が正面と仮定
+        const cosTh_Mic = dummyV.z; 
+        const g1 = p.a1 + p.b1 * cosTh_Mic;
+        const g2 = p.a2 + p.b2 * cosTh_Mic;
+
+        // 2. Phase Difference: (Rotated Array Axis)
+        // アレイ軸への射影
+        const cosTh_Array = dummyV.x * axX + dummyV.z * axZ;
+        const d_phase = k * (p.D/2) * cosTh_Array;
+
+        const r1 = g1 * Math.cos(d_phase);
+        const i1 = g1 * Math.sin(d_phase);
+        const r2 = g2 * Math.cos(-d_phase);
+        const i2 = g2 * Math.sin(-d_phase);
+        
+        let R, I;
+        if (p.mode === 'sum') { R=r1+r2; I=i1+i2; }
+        else if (p.mode === 'diff') { R=r1-r2; I=i1-i2; }
+        else if (p.mode === 'p1') { R=r1; I=i1; }
+        else { R=r2; I=i2; }
+        
+        const mag = Math.sqrt(R*R + I*I);
+        
+        const scale = (mag / maxScaleRef) * 2.5;
+        positions.setXYZ(i, ox * scale, oy * scale, oz * scale);
+
+        const val = (mag / maxScaleRef);
+        const db = (val > 0.001) ? 20*Math.log10(val) : -60;
+        let t = (db + 30) / 30;
+        if(t<0) t=0; if(t>1) t=1;
+        lutColor.setHSL(0.66 * (1-t), 1.0, 0.5);
+        colors.setXYZ(i, lutColor.r, lutColor.g, lutColor.b);
+    }
+    
+    positions.needsUpdate = true;
+    colors.needsUpdate = true;
+    patternMesh.geometry.computeVertexNormals();
+}
+
+function onWindowResize() {
+    if(camera && renderer) {
+        const w = threeContainer.clientWidth;
+        const h = threeContainer.clientHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+    }
+}
+
+init3D();
+setTimeout(update, 100);
+
+// Tooltip logic
+document.getElementById('mapCanvas').addEventListener('mousemove', e => {
+    const r = e.target.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    const w = r.width, h = r.height;
+    const minF=100, maxF=20000;
+    const f = minF * Math.pow(maxF/minF, x/w);
+    const deg = -180 + (y/h)*360;
+    els.tooltip.style.display = 'block';
+    els.tooltip.style.left = (e.clientX + 10) + 'px';
+    els.tooltip.style.top = (e.clientY + 10) + 'px';
+    els.tooltip.textContent = `${f.toFixed(0)}Hz / ${deg.toFixed(0)}°`;
+});
+document.getElementById('mapCanvas').addEventListener('mouseleave', () => {
+    els.tooltip.style.display = 'none';
+});
+
+</script>
+</body>
+</html>

@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>量子二重スリット・インタラクティブ学習ページ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: radial-gradient(circle at top left, #1f2937 0%, #020617 45%, #020617 100%);
+            color: #e5e7eb;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #sidebar {
+            width: 380px;
+            max-width: 100%;
+            background: rgba(15, 23, 42, 0.96);
+            border-right: 1px solid rgba(148, 163, 184, 0.15);
+            padding: 18px 18px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 14px 18px 18px;
+        }
+        h1 {
+            font-size: 20px;
+            margin: 0 0 4px;
+            letter-spacing: 0.04em;
+        }
+        .subtitle {
+            font-size: 12px;
+            color: #9ca3af;
+            margin-bottom: 10px;
+        }
+        .section-title {
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+            color: #9ca3af;
+            margin-top: 4px;
+            margin-bottom: 6px;
+        }
+        .card {
+            background: radial-gradient(circle at top left, rgba(30,64,175,0.18), rgba(15,23,42,0.85));
+            border-radius: 14px;
+            padding: 10px 12px;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            box-shadow: 0 18px 40px rgba(15,23,42,0.8);
+        }
+        .card.soft {
+            background: rgba(15, 23, 42, 0.85);
+            box-shadow: 0 14px 30px rgba(15,23,42,0.7);
+        }
+        .card + .card {
+            margin-top: 8px;
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 6px;
+            margin-top: 6px;
+            margin-bottom: 4px;
+        }
+        .mode-btn {
+            flex: 1;
+            border-radius: 999px;
+            border: 1px solid rgba(148, 163, 184, 0.4);
+            background: radial-gradient(circle at top, rgba(30,64,175,0.4), rgba(15,23,42,0.9));
+            padding: 6px 8px;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: #e5e7eb;
+            cursor: pointer;
+            transition: all 0.15s ease-out;
+        }
+        .mode-btn.secondary {
+            background: rgba(15, 23, 42, 0.9);
+            border-color: rgba(55, 65, 81, 0.8);
+            color: #9ca3af;
+        }
+        .mode-btn.active {
+            box-shadow: 0 0 0 1px rgba(129, 140, 248, 0.9), 0 0 18px rgba(59, 130, 246, 0.55);
+            color: #f9fafb;
+        }
+        .mode-description {
+            font-size: 11px;
+            color: #9ca3af;
+            line-height: 1.4;
+            margin-top: 4px;
+        }
+
+        .slider-group {
+            margin-bottom: 6px;
+        }
+        .slider-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        .slider-label {
+            font-weight: 500;
+        }
+        .slider-value {
+            color: #93c5fd;
+            font-variant-numeric: tabular-nums;
+        }
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            height: 4px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #1d4ed8, #6366f1);
+            outline: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            border: 2px solid #1d4ed8;
+            box-shadow: 0 0 10px rgba(59,130,246,0.8);
+            cursor: pointer;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #e5e7eb;
+            border: 2px solid #1d4ed8;
+            box-shadow: 0 0 10px rgba(59,130,246,0.8);
+            cursor: pointer;
+        }
+        input[type="range"]::-moz-range-track {
+            height: 4px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, #1d4ed8, #6366f1);
+        }
+
+        .small-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            margin-top: 6px;
+        }
+        .small-row .label {
+            font-size: 11px;
+            color: #9ca3af;
+        }
+        .small-row .number {
+            font-size: 11px;
+            color: #bfdbfe;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .button-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .ghost-btn {
+            flex: 1;
+            font-size: 11px;
+            padding: 6px 8px;
+            border-radius: 999px;
+            border: 1px solid rgba(148,163,184,0.5);
+            background: rgba(15,23,42,0.9);
+            color: #e5e7eb;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+            transition: all 0.15s ease-out;
+        }
+        .ghost-btn:hover {
+            border-color: rgba(129,140,248,0.9);
+            box-shadow: 0 0 14px rgba(79,70,229,0.6);
+        }
+        .ghost-btn.danger {
+            border-color: rgba(248, 113, 113, 0.7);
+            color: #fecaca;
+        }
+        .ghost-btn small {
+            opacity: 0.8;
+        }
+
+        .note {
+            font-size: 10px;
+            color: #6b7280;
+            line-height: 1.5;
+            margin-top: 6px;
+        }
+        .tip-list {
+            margin: 4px 0 0;
+            padding-left: 14px;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+        .tip-list li {
+            margin-bottom: 2px;
+        }
+
+        #canvas-container {
+            flex: 1;
+            border-radius: 18px;
+            border: 1px solid rgba(148, 163, 184, 0.27);
+            background: radial-gradient(circle at top, rgba(55,65,81,0.65), #020617 42%, #000 80%);
+            box-shadow: 0 24px 60px rgba(15,23,42,0.95);
+            position: relative;
+            padding: 10px 10px 12px;
+            display: flex;
+            flex-direction: column;
+        }
+        #screen {
+            flex: 1;
+            border-radius: 12px;
+            background: #020617;
+            border: 1px solid rgba(31,41,55,0.9);
+            image-rendering: pixelated;
+        }
+        #canvas-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 6px;
+            padding: 0 2px;
+        }
+        #mode-label {
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #9ca3af;
+        }
+        #derived-info {
+            font-size: 10px;
+            color: #9ca3af;
+            font-variant-numeric: tabular-nums;
+        }
+        #footer-text {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #6b7280;
+            display: flex;
+            justify-content: space-between;
+        }
+        #footer-text strong {
+            color: #9ca3af;
+        }
+
+        @media (max-width: 900px) {
+            body {
+                flex-direction: column;
+                height: auto;
+            }
+            #sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+                max-height: 62vh;
+                overflow-y: auto;
+            }
+            #main {
+                height: 60vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="sidebar">
+        <div>
+            <h1>量子二重スリット実験</h1>
+            <div class="subtitle">
+                波と粒子の二重性・干渉・デコヒーレンスを<br>スライダーで直感的に体感できます。
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="section-title">表示モード</div>
+            <div class="mode-toggle">
+                <button class="mode-btn active" id="wave-mode-btn">
+                    波として表示<br><small>干渉縞の強度分布</small>
+                </button>
+                <button class="mode-btn secondary" id="particle-mode-btn">
+                    粒子の打ち込み<br><small>１発ずつ蓄積</small>
+                </button>
+            </div>
+            <div class="mode-description" id="mode-description">
+                「波として表示」では、スクリーン上の明るさが<br>
+                波の干渉による強度（確率の高低）を表します。
+            </div>
+        </div>
+
+        <div class="card soft">
+            <div class="section-title">パラメータ</div>
+
+            <div class="slider-group">
+                <div class="slider-label-row">
+                    <span class="slider-label">波長（相対単位）</span>
+                    <span class="slider-value" id="lambda-value">0.70</span>
+                </div>
+                <input type="range" id="lambda-slider" min="0.30" max="1.00" step="0.01" value="0.70">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-label-row">
+                    <span class="slider-label">スリット間隔 d（相対単位）</span>
+                    <span class="slider-value" id="d-value">2.50</span>
+                </div>
+                <input type="range" id="d-slider" min="1.00" max="5.00" step="0.05" value="2.50">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-label-row">
+                    <span class="slider-label">スクリーンまでの距離 L（相対単位）</span>
+                    <span class="slider-value" id="L-value">2.00</span>
+                </div>
+                <input type="range" id="L-slider" min="1.00" max="5.00" step="0.05" value="2.00">
+            </div>
+
+            <div class="slider-group">
+                <div class="slider-label-row">
+                    <span class="slider-label">デコヒーレンス（どちらを通ったかの「情報」）</span>
+                    <span class="slider-value" id="decoherence-value">0.00</span>
+                </div>
+                <input type="range" id="decoherence-slider" min="0" max="1" step="0.01" value="0">
+            </div>
+
+            <div class="small-row">
+                <div class="label">粒子モード：１フレームあたりの粒子数</div>
+                <div class="number"><span id="shots-value">50</span> 発</div>
+            </div>
+            <input type="range" id="shots-slider" min="5" max="300" step="5" value="50">
+
+            <div class="button-row">
+                <button class="ghost-btn" id="pause-btn">
+                    ⏯ <span id="pause-label">一時停止</span>
+                </button>
+                <button class="ghost-btn danger" id="reset-btn">
+                    🧹 <small>粒子パターンをリセット</small>
+                </button>
+            </div>
+
+            <div class="note">
+                ※ここでの単位は「相対単位」です。実際の実験では nm（波長）、μm（スリット幅・間隔）、m（距離）などになりますが、<br>
+                干渉パターンを見やすくするためにスケーリングしています。
+            </div>
+        </div>
+
+        <div class="card soft">
+            <div class="section-title">見どころ</div>
+            <ul class="tip-list">
+                <li>デコヒーレンスを 0 → 1 に動かすと、干渉縞が消えてぼんやりした１つの山になります（どのスリットを通ったか「分かる」と干渉しない）。</li>
+                <li>粒子モードでは、１発１発はランダムだが、たくさん打ち込むと波の強度分布どおりの模様が浮かび上がります。</li>
+                <li>波長を長くすると縞の間隔が広がり、スリット間隔を広げると縞が細かくなっていきます。</li>
+            </ul>
+        </div>
+    </div>
+
+    <div id="main">
+        <div id="canvas-container">
+            <div id="canvas-header">
+                <div id="mode-label">波の強度パターン</div>
+                <div id="derived-info">
+                    中心付近の縞の間隔（目安）: <span id="fringe-spacing">–</span>（相対位置）
+                </div>
+            </div>
+            <canvas id="screen" width="960" height="520"></canvas>
+            <div id="footer-text">
+                <span>左側：二重スリット　→　右側：観測スクリーン（明るさ＝検出確率）</span>
+                <span><strong>学習のポイント：</strong> 波と粒子の二重性 / 干渉 / デコヒーレンス</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // キャンバスとコンテキスト
+        const canvas = document.getElementById('screen');
+        const ctx = canvas.getContext('2d');
+
+        // UI要素
+        const waveModeBtn = document.getElementById('wave-mode-btn');
+        const particleModeBtn = document.getElementById('particle-mode-btn');
+        const modeDescriptionEl = document.getElementById('mode-description');
+        const modeLabelEl = document.getElementById('mode-label');
+
+        const lambdaSlider = document.getElementById('lambda-slider');
+        const dSlider = document.getElementById('d-slider');
+        const LSlider = document.getElementById('L-slider');
+        const decoherenceSlider = document.getElementById('decoherence-slider');
+        const shotsSlider = document.getElementById('shots-slider');
+
+        const lambdaValueEl = document.getElementById('lambda-value');
+        const dValueEl = document.getElementById('d-value');
+        const LValueEl = document.getElementById('L-value');
+        const decoherenceValueEl = document.getElementById('decoherence-value');
+        const shotsValueEl = document.getElementById('shots-value');
+        const fringeSpacingEl = document.getElementById('fringe-spacing');
+
+        const pauseBtn = document.getElementById('pause-btn');
+        const pauseLabel = document.getElementById('pause-label');
+        const resetBtn = document.getElementById('reset-btn');
+
+        // モデル・パラメータ（相対単位）
+        const params = {
+            wavelength: parseFloat(lambdaSlider.value),   // λ
+            slitSeparation: parseFloat(dSlider.value),   // d
+            screenDistance: parseFloat(LSlider.value),   // L
+            slitWidth: 0.7,                              // 単スリット幅（相対。固定）
+            decoherence: parseFloat(decoherenceSlider.value), // 0〜1
+            mode: 'wave',      // 'wave' or 'particles'
+            shotsPerFrame: parseInt(shotsSlider.value, 10),
+            running: true
+        };
+
+        // 計算用バッファ
+        let intensityArray = new Float32Array(canvas.width);
+        let cdfArray = new Float32Array(canvas.width);
+        let maxIntensity = 1;
+        let totalShots = 0;
+
+        // 画面上の半分の幅を相対距離にマッピング
+        const SCREEN_HALF_WIDTH = 4.0; // スクリーン左右端までの「相対位置」
+
+        function updateLabels() {
+            lambdaValueEl.textContent = params.wavelength.toFixed(2);
+            dValueEl.textContent = params.slitSeparation.toFixed(2);
+            LValueEl.textContent = params.screenDistance.toFixed(2);
+            decoherenceValueEl.textContent = params.decoherence.toFixed(2);
+            shotsValueEl.textContent = params.shotsPerFrame.toString();
+        }
+
+        function computePattern() {
+            const w = canvas.width;
+            const lambda = params.wavelength;
+            const d = params.slitSeparation;
+            const L = params.screenDistance;
+            const a = params.slitWidth;
+            const decoh = params.decoherence;
+
+            let maxI = 0;
+            let sumI = 0;
+
+            for (let i = 0; i < w; i++) {
+                const xRel = ((i / (w - 1)) * 2 - 1) * SCREEN_HALF_WIDTH; // -W..+W
+
+                const theta = Math.atan2(xRel, L); // 相対的な角度
+                const k = 2 * Math.PI / lambda;
+                const delta = k * d * Math.sin(theta); // 2スリット間の位相差
+
+                const beta = Math.PI * a * Math.sin(theta) / lambda;
+                let envelope;
+                if (Math.abs(beta) < 1e-6) {
+                    envelope = 1.0;
+                } else {
+                    envelope = Math.sin(beta) / beta; // sinc
+                }
+                const I1 = envelope * envelope; // 単スリットの回折包絡
+
+                // 干渉ありのとき (2スリット, コヒーレント)
+                const interference = Math.cos(delta / 2);
+                const Iinterf = 4 * I1 * interference * interference;
+
+                // 干渉なし（各スリット独立に足し合わせる）
+                const Ino = 2 * I1;
+
+                const I = (1 - decoh) * Iinterf + decoh * Ino;
+
+                intensityArray[i] = I;
+                if (I > maxI) maxI = I;
+                sumI += I;
+            }
+
+            maxIntensity = maxI > 0 ? maxI : 1;
+
+            // CDFを構築（粒子モード用）
+            let cumulative = 0;
+            const norm = sumI > 0 ? 1 / sumI : 0;
+            for (let i = 0; i < w; i++) {
+                cumulative += intensityArray[i] * norm;
+                cdfArray[i] = cumulative;
+            }
+            if (cdfArray[w - 1] === 0) {
+                // 万一全てゼロなら均等分布
+                for (let i = 0; i < w; i++) {
+                    cdfArray[i] = (i + 1) / w;
+                }
+            }
+
+            updateFringeEstimate();
+        }
+
+        function updateFringeEstimate() {
+            const lambda = params.wavelength;
+            const d = params.slitSeparation;
+            const L = params.screenDistance;
+
+            if (d === 0) {
+                fringeSpacingEl.textContent = '–';
+                return;
+            }
+            // 二重スリットの基本式 Δx ~ λ L / d を相対単位でそのまま
+            let fringe = (lambda * L) / d;
+            if (!isFinite(fringe) || fringe <= 0) {
+                fringeSpacingEl.textContent = '–';
+                return;
+            }
+            // 画面幅との関係を軽くスケールして目安表示
+            fringeSpacingEl.textContent = fringe.toFixed(2);
+        }
+
+        function drawWavePattern() {
+            const w = canvas.width;
+            const h = canvas.height;
+            const image = ctx.createImageData(w, h);
+            const data = image.data;
+
+            for (let x = 0; x < w; x++) {
+                const I = intensityArray[x] / maxIntensity;
+                const brightness = Math.max(0, Math.min(1, I));
+                const gamma = Math.pow(brightness, 0.7); // 少し明るめに
+
+                const r = Math.floor(255 * gamma);
+                const g = Math.floor(255 * Math.pow(brightness, 0.5));
+                const b = Math.floor(255 * (0.4 + 0.6 * brightness));
+
+                for (let y = 0; y < h; y++) {
+                    const idx = (y * w + x) * 4;
+                    data[idx] = r;
+                    data[idx + 1] = g;
+                    data[idx + 2] = b;
+                    data[idx + 3] = 255;
+                }
+            }
+
+            ctx.putImageData(image, 0, 0);
+            totalShots = 0;
+        }
+
+        function clearParticles() {
+            const w = canvas.width;
+            const h = canvas.height;
+
+            const gradient = ctx.createLinearGradient(0, 0, 0, h);
+            gradient.addColorStop(0, '#020617');
+            gradient.addColorStop(0.4, '#020617');
+            gradient.addColorStop(1.0, '#000000');
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, w, h);
+
+            totalShots = 0;
+        }
+
+        function sampleXIndexFromCDF() {
+            const w = canvas.width;
+            const u = Math.random();
+            // 二分探索
+            let low = 0;
+            let high = w - 1;
+
+            while (low < high) {
+                const mid = (low + high) >> 1;
+                if (u <= cdfArray[mid]) {
+                    high = mid;
+                } else {
+                    low = mid + 1;
+                }
+            }
+            return low;
+        }
+
+        function drawOneParticle() {
+            const xIndex = sampleXIndexFromCDF();
+            const jitter = (Math.random() - 0.5); // ピクセル内でランダムに
+            const x = xIndex + jitter;
+
+            const h = canvas.height;
+            const y = (0.15 + 0.7 * Math.random()) * h; // 画面中央付近に散らす
+
+            const alpha = 0.3 + 0.7 * Math.random();
+            ctx.fillStyle = `rgba(96, 165, 250, ${alpha.toFixed(2)})`;
+
+            const size = 1.2 + 1.0 * Math.random();
+            ctx.beginPath();
+            ctx.arc(x, y, size, 0, Math.PI * 2);
+            ctx.fill();
+
+            totalShots++;
+        }
+
+        function onParamsChanged(resetParticleView = true) {
+            computePattern();
+            if (params.mode === 'wave') {
+                drawWavePattern();
+            } else {
+                if (resetParticleView) {
+                    clearParticles();
+                }
+            }
+        }
+
+        function setMode(newMode) {
+            if (params.mode === newMode) return;
+
+            params.mode = newMode;
+            if (newMode === 'wave') {
+                waveModeBtn.classList.add('active');
+                waveModeBtn.classList.remove('secondary');
+                particleModeBtn.classList.remove('active');
+                particleModeBtn.classList.add('secondary');
+                modeDescriptionEl.innerHTML = '「波として表示」では、スクリーンの明るさが<br>波の干渉による強度（確率の高さ）を表します。';
+                modeLabelEl.textContent = '波の強度パターン';
+                pauseBtn.disabled = true;
+                pauseBtn.style.opacity = 0.5;
+                pauseLabel.textContent = '一時停止';
+                params.running = true;
+                drawWavePattern();
+            } else {
+                waveModeBtn.classList.remove('active');
+                waveModeBtn.classList.add('secondary');
+                particleModeBtn.classList.add('active');
+                particleModeBtn.classList.remove('secondary');
+                modeDescriptionEl.innerHTML = '「粒子の打ち込み」では、１発１発はランダムですが、<br>多数打ち込むと波の干渉パターンが浮かび上がります。';
+                modeLabelEl.textContent = '粒子の検出パターン（統計）';
+                pauseBtn.disabled = false;
+                pauseBtn.style.opacity = 1;
+                params.running = true;
+                pauseLabel.textContent = '一時停止';
+                clearParticles();
+            }
+        }
+
+        // アニメーションループ
+        function animate() {
+            if (params.mode === 'particles' && params.running) {
+                const n = params.shotsPerFrame;
+                for (let i = 0; i < n; i++) {
+                    drawOneParticle();
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // イベント設定
+        lambdaSlider.addEventListener('input', (e) => {
+            params.wavelength = parseFloat(e.target.value);
+            updateLabels();
+            onParamsChanged(true);
+        });
+
+        dSlider.addEventListener('input', (e) => {
+            params.slitSeparation = parseFloat(e.target.value);
+            updateLabels();
+            onParamsChanged(true);
+        });
+
+        LSlider.addEventListener('input', (e) => {
+            params.screenDistance = parseFloat(e.target.value);
+            updateLabels();
+            onParamsChanged(true);
+        });
+
+        decoherenceSlider.addEventListener('input', (e) => {
+            params.decoherence = parseFloat(e.target.value);
+            updateLabels();
+            onParamsChanged(true);
+        });
+
+        shotsSlider.addEventListener('input', (e) => {
+            params.shotsPerFrame = parseInt(e.target.value, 10);
+            updateLabels();
+        });
+
+        waveModeBtn.addEventListener('click', () => setMode('wave'));
+        particleModeBtn.addEventListener('click', () => setMode('particles'));
+
+        pauseBtn.addEventListener('click', () => {
+            if (params.mode !== 'particles') return;
+            params.running = !params.running;
+            pauseLabel.textContent = params.running ? '一時停止' : '再開';
+        });
+
+        resetBtn.addEventListener('click', () => {
+            if (params.mode === 'wave') {
+                drawWavePattern();
+            } else {
+                clearParticles();
+            }
+        });
+
+        // 初期化
+        updateLabels();
+        computePattern();
+        drawWavePattern();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>3つの単一指向性マイク指向性シミュレータ</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            background: #0f172a;
+            color: #e5e7eb;
+        }
+        #sidebar {
+            width: 360px;
+            padding: 16px 20px;
+            background: #020617;
+            box-shadow: 4px 0 16px rgba(0,0,0,0.5);
+            box-sizing: border-box;
+            overflow-y: auto;
+        }
+        #main {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            background: #020617;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+        }
+        h1 {
+            font-size: 18px;
+            margin: 0 0 8px;
+        }
+        h2 {
+            font-size: 14px;
+            margin: 14px 0 4px;
+        }
+        .control {
+            margin-bottom: 10px;
+        }
+        .control label {
+            display: block;
+            font-size: 13px;
+            margin-bottom: 2px;
+        }
+        .control input[type="range"] {
+            width: 100%;
+        }
+        .value {
+            font-size: 12px;
+            opacity: 0.9;
+        }
+        .row {
+            display: flex;
+            gap: 8px;
+        }
+        .row input[type="number"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 3px 4px;
+            border-radius: 4px;
+            border: 1px solid #4b5563;
+            background: #020617;
+            color: #e5e7eb;
+        }
+        button.preset {
+            margin-right: 4px;
+            margin-top: 2px;
+            padding: 2px 6px;
+            font-size: 11px;
+            background: #1f2937;
+            color: #e5e7eb;
+            border-radius: 4px;
+            border: 1px solid #4b5563;
+            cursor: pointer;
+        }
+        button.preset:hover {
+            background: #374151;
+        }
+        .note {
+            font-size: 11px;
+            opacity: 0.85;
+            line-height: 1.4;
+        }
+        a {
+            color: #93c5fd;
+        }
+
+        .mode-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+        }
+        .mode-option {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+        }
+        .mode-option input[type="radio"] {
+            margin: 0;
+        }
+        .mode-option span {
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #4b5563;
+            background: #020617;
+            margin-left: 4px;
+        }
+        .mode-option input[type="radio"]:checked + span {
+            background: #1f2937;
+            border-color: #93c5fd;
+            color: #e5e7eb;
+        }
+
+        .link-row {
+            font-size: 12px;
+            margin-bottom: 6px;
+        }
+        .link-row input {
+            margin-right: 4px;
+        }
+    </style>
+</head>
+<body>
+<div id="sidebar">
+    <h1>3つの単一指向性マイクの指向性</h1>
+    <div class="note">
+        前方（0° = 下 = 南）を向いた <b>3つの単一指向性マイク</b> を、<br>
+        中央マイクを基準に前方へ <b>D<sub>front</sub></b>、後方へ <b>D<sub>back</sub></b> だけ離して配置し、<br>
+        選択した出力（P₁, P₂, P₃, 差動, 和）の指向性を描きます。<br>
+        各マイクの基本形は <b>D(θ) = α + β cosθ</b> です（θ は前方からの角度）。
+    </div>
+
+    <h2>1. マイクの基本指向性 D(θ) = α + β cosθ</h2>
+
+    <div class="control link-row">
+        <label>
+            <input type="checkbox" id="linkPattern" checked>
+            3本のマイクで α, β をリンクする
+        </label>
+    </div>
+
+    <div class="row control">
+        <div style="flex:1;">
+            <label for="alpha1">前マイク α₁</label>
+            <input id="alpha1" type="number" step="0.05" value="0.5">
+        </div>
+        <div style="flex:1;">
+            <label for="beta1">前マイク β₁</label>
+            <input id="beta1" type="number" step="0.05" value="0.5">
+        </div>
+    </div>
+    <div class="row control">
+        <div style="flex:1;">
+            <label for="alphaMid">中央マイク α₂</label>
+            <input id="alphaMid" type="number" step="0.05" value="0.5">
+        </div>
+        <div style="flex:1;">
+            <label for="betaMid">中央マイク β₂</label>
+            <input id="betaMid" type="number" step="0.05" value="0.5">
+        </div>
+    </div>
+    <div class="row control">
+        <div style="flex:1;">
+            <label for="alpha2">後マイク α₃</label>
+            <input id="alpha2" type="number" step="0.05" value="0.5">
+        </div>
+        <div style="flex:1;">
+            <label for="beta2">後マイク β₃</label>
+            <input id="beta2" type="number" step="0.05" value="0.5">
+        </div>
+    </div>
+
+    <div class="control">
+        <button class="preset" data-alpha="1" data-beta="0">OMNI</button>
+        <button class="preset" data-alpha="0.5" data-beta="0.5">Cardioid</button>
+        <button class="preset" data-alpha="0" data-beta="1">Figure-8</button>
+        <button class="preset" data-alpha="0.25" data-beta="0.75">Hyper-ish</button>
+    </div>
+    <div class="note">
+        例：<br>
+        ・OMNI … α=1, β=0<br>
+        ・Cardioid … α=0.5, β=0.5<br>
+        ・Figure-8 … α=0, β=1
+    </div>
+
+    <h2>2. 出力モード（3本の加重合成）</h2>
+    <div class="control">
+        <label>出力 = w₁·P₁ + w₂·P₂ + w₃·P₃</label>
+        <div class="row">
+            <div style="flex:1;">
+                <label for="w1">w₁（前 P₁）</label>
+                <input id="w1" type="number" step="0.1" value="1">
+            </div>
+            <div style="flex:1;">
+                <label for="w2">w₂（中央 P₂）</label>
+                <input id="w2" type="number" step="0.1" value="0">
+            </div>
+            <div style="flex:1;">
+                <label for="w3">w₃（後 P₃）</label>
+                <input id="w3" type="number" step="0.1" value="0">
+            </div>
+        </div>
+    </div>
+
+    <div class="control">
+        <label>係数プリセット</label>
+        <div class="mode-group">
+            <button class="preset mix-preset" data-w1="1" data-w2="0" data-w3="0">P₁</button>
+            <button class="preset mix-preset" data-w1="0" data-w2="1" data-w3="0">P₂</button>
+            <button class="preset mix-preset" data-w1="0" data-w2="0" data-w3="1">P₃</button>
+            <button class="preset mix-preset" data-w1="1" data-w2="1" data-w3="1">P₁＋P₂＋P₃</button>
+            <button class="preset mix-preset" data-w1="1" data-w2="-2" data-w3="1">P₁ − 2P₂ + P₃</button>
+            <button class="preset mix-preset" data-w1="1" data-w2="-1" data-w3="0">P₁ − P₂</button>
+            <button class="preset mix-preset" data-w1="0" data-w2="1" data-w3="-1">P₂ − P₃</button>
+            <button class="preset mix-preset" data-w1="1" data-w2="0" data-w3="-1">P₁ − P₃</button>
+        </div>
+        <div class="note">
+            ※ボタンを押すと上の w₁, w₂, w₃ に反映されます。<br>
+            　そのまま値を書き換えれば完全に任意の合成ができます。
+        </div>
+    </div>
+
+
+    <div class="control">
+        <label>
+            <input type="checkbox" id="showSign" checked>
+            正負を実線/点線で表示（Figure-8 の相反転など）
+        </label>
+    </div>
+
+    <div class="control">
+        <label>
+            <input type="checkbox" id="normalizeFront">
+            前方0°を0 dB基準として正規化（OFF: 最大値を0 dB基準）
+        </label>
+    </div>
+
+    <h2>3. マイク間隔 D<sub>front</sub>, D<sub>back</sub> と配置角 φ</h2>
+    <div class="control">
+        <label for="D_front">D<sub>front</sub>（中央から前マイクまで, mm）</label>
+        <input id="D_front" type="range" min="0" max="200" step="1" value="20">
+        <div class="value" id="D_front_value"></div>
+    </div>
+    <div class="control">
+        <label for="D_back">D<sub>back</sub>（中央から後マイクまで, mm）</label>
+        <input id="D_back" type="range" min="0" max="200" step="1" value="20">
+        <div class="value" id="D_back_value"></div>
+    </div>
+
+    <div class="control">
+        <label for="orientation">マイク列の向き φ（度, 0°=前後, 90°=左右）</label>
+        <input id="orientation" type="range" min="0" max="359" step="1" value="0">
+        <div class="value" id="orientation_value"></div>
+    </div>
+
+    <h2>4. 周波数 f</h2>
+    <div class="control">
+        <label for="freq">f（周波数, Hz）</label>
+        <input id="freq" type="range" min="100" max="48000" step="50" value="3000">
+        <div class="value" id="freq_value"></div>
+    </div>
+
+    <h2>5. 現在の状態</h2>
+    <div class="note" id="status"></div>
+    <div class="note" id="hoverInfo"></div>
+
+    <h2>6. エクスポート</h2>
+    <div class="control">
+        <button id="exportPng" class="preset">PNG 保存</button>
+        <button id="exportCsv" class="preset">CSV 保存</button>
+    </div>
+
+    <h2>補足</h2>
+    <div class="note">
+        ・<b>0° は下（南）</b>、角度は反時計回りです。<br>
+        　0°: 下 / 90°: 右 / 180°: 上 / 270°: 左<br>
+        ・dBリングは「選択した正規化モードの 0 dB」を基準に描画します。<br>
+        ・α, β のリンクを外すと、3本を別々の指向性にして試せます。<br>
+        ・D<sub>front</sub>, D<sub>back</sub> を変えると 2次傾度マイクの null の位置が変化します。
+    </div>
+</div>
+
+<div id="main">
+    <canvas id="polarCanvas" width="640" height="640"></canvas>
+</div>
+
+<script>
+const C_SOUND = 343.0; // m/s
+
+const canvas = document.getElementById('polarCanvas');
+const ctx = canvas.getContext('2d');
+
+// α, β 入力
+const alpha1Input   = document.getElementById('alpha1');   // 前
+const beta1Input    = document.getElementById('beta1');
+const alphaMidInput = document.getElementById('alphaMid'); // 中央
+const betaMidInput  = document.getElementById('betaMid');
+const alpha2Input   = document.getElementById('alpha2');   // 後
+const beta2Input    = document.getElementById('beta2');
+const linkPatternInput = document.getElementById('linkPattern');
+
+// 係数 w₁,w₂,w₃
+const w1Input = document.getElementById('w1');
+const w2Input = document.getElementById('w2');
+const w3Input = document.getElementById('w3');
+
+// 距離・周波数・向き
+const DFrontSlider = document.getElementById('D_front');
+const DBackSlider  = document.getElementById('D_back');
+const FSlider      = document.getElementById('freq');
+const DFrontValue  = document.getElementById('D_front_value');
+const DBackValue   = document.getElementById('D_back_value');
+const FValue       = document.getElementById('freq_value');
+const orientSlider = document.getElementById('orientation');
+const orientValue  = document.getElementById('orientation_value');
+
+// その他 UI
+const statusEl   = document.getElementById('status');
+const hoverInfoEl = document.getElementById('hoverInfo');
+const showSignInput = document.getElementById('showSign');
+const normalizeFrontInput = document.getElementById('normalizeFront');
+const exportPngBtn = document.getElementById('exportPng');
+const exportCsvBtn = document.getElementById('exportCsv');
+
+let lastPattern = null; // {thetaArr, mags, magsRaw, signs}
+
+function degToRad(deg) {
+    return deg * Math.PI / 180;
+}
+
+// α,β プリセットボタン
+document.querySelectorAll('button.preset[data-alpha]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const a = btn.dataset.alpha;
+        const b = btn.dataset.beta;
+        alpha1Input.value   = a;
+        beta1Input.value    = b;
+        alphaMidInput.value = a;
+        betaMidInput.value  = b;
+        alpha2Input.value   = a;
+        beta2Input.value    = b;
+        update();
+    });
+});
+
+// w₁,w₂,w₃ プリセットボタン
+document.querySelectorAll('.mix-preset').forEach(btn => {
+    btn.addEventListener('click', () => {
+        w1Input.value = btn.dataset.w1;
+        w2Input.value = btn.dataset.w2;
+        w3Input.value = btn.dataset.w3;
+        update();
+    });
+});
+
+// 入力イベント
+[
+  DFrontSlider, DBackSlider, FSlider,
+  alpha1Input, beta1Input,
+  alphaMidInput, betaMidInput,
+  alpha2Input, beta2Input,
+  w1Input, w2Input, w3Input,
+  showSignInput,
+  normalizeFrontInput,
+  orientSlider
+].forEach(el => {
+    el.addEventListener('input', update);
+});
+linkPatternInput.addEventListener('change', update);
+
+// 単一マイクの基本指向性
+function cardioidBase(theta, alpha, beta) {
+    // D(θ) = α + β cosθ
+    return alpha + beta * Math.cos(theta);
+}
+
+// 3マイクのパターン計算（まだ正規化しない）
+// 出力 = w1 * P1 + w2 * P2 + w3 * P3
+// phiRad: マイク列の向き（0°=前後, 90°=左右）
+function computePatternRawThree(
+    D_front_m, D_back_m, f,
+    alpha1, beta1,
+    alphaMid, betaMid,
+    alpha2, beta2,
+    w1, w2, w3,
+    nTheta = 720,
+    phiRad = 0
+) {
+    const lam = C_SOUND / f;
+    const k = 2 * Math.PI / lam;
+    const thetaArr = [];
+    const magsRaw = [];
+    const signs = [];
+
+    for (let i = 0; i < nTheta; i++) {
+        const theta = 2 * Math.PI * i / nTheta; // 0〜2π
+        thetaArr.push(theta);
+
+        // 各マイクの基本指向性
+        const g1 = cardioidBase(theta, alpha1,   beta1);
+        const g2 = cardioidBase(theta, alphaMid, betaMid);
+        const g3 = cardioidBase(theta, alpha2,   beta2);
+
+        // マイク列の向き φ に沿って、中央から +D_front, 0, -D_back
+        const phase1 = k * ( D_front_m) * Math.cos(theta - phiRad); // 前
+        const phase2 = 0.0;                                         // 中央
+        const phase3 = k * (-D_back_m) * Math.cos(theta - phiRad);  // 後
+
+        const P1_re = g1 * Math.cos(phase1);
+        const P1_im = g1 * Math.sin(phase1);
+        const P2_re = g2 * Math.cos(phase2);
+        const P2_im = g2 * Math.sin(phase2);
+        const P3_re = g3 * Math.cos(phase3);
+        const P3_im = g3 * Math.sin(phase3);
+
+        const Out_re = w1 * P1_re + w2 * P2_re + w3 * P3_re;
+        const Out_im = w1 * P1_im + w2 * P2_im + w3 * P3_im;
+
+        const magRaw = Math.sqrt(Out_re * Out_re + Out_im * Out_im);
+        magsRaw.push(magRaw);
+        signs.push(Out_re >= 0 ? 1 : -1); // 実部の符号
+    }
+
+    return { thetaArr, magsRaw, signs };
+}
+
+// 極座標プロット（0° = 下 = 南, 反時計回り）
+function drawPolar(thetaArr, mags, signs, showSign) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const maxR = Math.min(w, h) * 0.45;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // 背景
+    ctx.fillStyle = '#020617';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // === ここでスケール係数を決める（最大値に合わせて自動スケーリング） ===
+    let maxMag = 0;
+    for (let i = 0; i < mags.length; i++) {
+        if (mags[i] > maxMag) maxMag = mags[i];
+    }
+    if (maxMag <= 0) maxMag = 1;
+    // maxMag > 1 なら全体を縮小して画面内に収める
+    const scale = (maxMag > 1) ? (1 / maxMag) : 1;
+
+    // dBリング（0, -3, -6, -12dB）
+    const ringDb = [0, -3, -6, -12];
+    ctx.strokeStyle = '#1f2937';
+    ctx.lineWidth = 1;
+    ringDb.forEach(db => {
+        const lin = Math.pow(10, db / 20);
+        const r = maxR * scale * lin;  // ★ スケール反映
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, 2 * Math.PI);
+        ctx.stroke();
+    });
+
+    // dBリングラベル
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '11px system-ui';
+    ringDb.forEach(db => {
+        const lin = Math.pow(10, db / 20);
+        const r = maxR * scale * lin;  // ★ スケール反映
+        const x = r * Math.sin(Math.PI / 2); // 90°
+        const y = r * Math.cos(Math.PI / 2);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(db + ' dB', x + 4, y);
+    });
+
+    // 軸線
+    ctx.strokeStyle = '#334155';
+    const anglesDeg = [0, 90, 180, 270];
+    anglesDeg.forEach(deg => {
+        const rad = deg * Math.PI / 180;
+        const x = maxR * Math.sin(rad);
+        const y = maxR * Math.cos(rad);
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+    });
+
+    // 角度ラベル
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '12px system-ui';
+    function drawLabel(deg, textOffset = 14) {
+        const rad = deg * Math.PI / 180;
+        const r = maxR + textOffset;
+        const x = r * Math.sin(rad);
+        const y = r * Math.cos(rad);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(deg + '°', x, y);
+    }
+    drawLabel(0);
+    drawLabel(90);
+    drawLabel(180);
+    drawLabel(270);
+
+    // 指向性パターン
+    ctx.strokeStyle = '#f97316';
+    ctx.lineWidth = 2;
+
+    if (!showSign) {
+        // 絶対値だけで一本の実線
+        ctx.beginPath();
+        for (let i = 0; i < thetaArr.length; i++) {
+            const theta = thetaArr[i];
+            const rNorm = mags[i];          // 0〜（場合によっては >1）
+            const r = rNorm * maxR * scale; // ★ スケール反映
+            const x = r * Math.sin(theta);
+            const y = r * Math.cos(theta);
+            if (i === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    } else {
+        // 正負で実線/点線切り替え
+        const N = thetaArr.length;
+        let prevSign = signs[0] >= 0 ? 1 : -1;
+        ctx.setLineDash(prevSign > 0 ? [] : [6, 4]);
+        ctx.beginPath();
+        for (let i = 0; i <= N; i++) {
+            const idx = i % N;
+            const theta = thetaArr[idx];
+            const rNorm = mags[idx];
+            const r = rNorm * maxR * scale;  // ★ スケール反映
+            const x = r * Math.sin(theta);
+            const y = r * Math.cos(theta);
+            const s = signs[idx] >= 0 ? 1 : -1;
+
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            } else {
+                if (s === prevSign) {
+                    ctx.lineTo(x, y);
+                } else {
+                    ctx.stroke();
+                    ctx.setLineDash(s > 0 ? [] : [6, 4]);
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                }
+            }
+            prevSign = s;
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    ctx.restore();
+}
+
+function computeMetrics(pattern) {
+    const mags = pattern.mags; // いずれの正規化でもスケール不変なのでOK
+    const N = mags.length;
+    const frontMag = mags[0];
+
+    // 平均二乗値
+    let sumSq = 0;
+    for (let i = 0; i < N; i++) {
+        sumSq += mags[i] * mags[i];
+    }
+    const meanSq = sumSq / N;
+    const DI_dB = (meanSq > 0) ? 10 * Math.log10(frontMag * frontMag / meanSq) : 0;
+
+    // 前後比
+    const backIdx = Math.floor(N / 2);
+    const backMag = mags[backIdx];
+    let fb_dB;
+    if (backMag > 0) {
+        const ratio = frontMag / backMag;
+        fb_dB = 20 * Math.log10(ratio);
+    } else {
+        fb_dB = Infinity;
+    }
+
+    // -6dB ビーム幅（前方まわり）
+    const threshold = frontMag * Math.pow(10, -6 / 20);
+    let rightIndex = 0;
+    let leftIndex = 0;
+
+    // 右方向
+    let idx = 0;
+    while (true) {
+        const next = (idx + 1) % N;
+        if (next === 0 || mags[next] < threshold) {
+            rightIndex = idx;
+            break;
+        }
+        idx = next;
+    }
+
+    // 左方向
+    idx = 0;
+    while (true) {
+        const next = (idx - 1 + N) % N;
+        if (next === 0 || mags[next] < threshold) {
+            leftIndex = idx;
+            break;
+        }
+        idx = next;
+    }
+
+    let beamwidthDeg;
+    if (leftIndex === 0 && rightIndex === 0 && mags[0] >= threshold) {
+        beamwidthDeg = 360;
+    } else {
+        const span = (rightIndex - leftIndex + N) % N;
+        beamwidthDeg = span / N * 360;
+    }
+
+    return { DI_dB, fb_dB, beamwidthDeg };
+}
+
+function getMixLabel(w1, w2, w3) {
+    // プリセットと一致する場合は名前を返す
+    if (w1 === 1 && w2 === 0 && w3 === 0) return '前マイク単独 P₁';
+    if (w1 === 0 && w2 === 1 && w3 === 0) return '中央マイク単独 P₂';
+    if (w1 === 0 && w2 === 0 && w3 === 1) return '後マイク単独 P₃';
+    if (w1 === 1 && w2 === 1 && w3 === 1) return '和 P₁ + P₂ + P₃';
+    if (w1 === 1 && w2 === -2 && w3 === 1) return '2次差動 P₁ − 2P₂ + P₃';
+    if (w1 === 1 && w2 === -1 && w3 === 0) return '差動 P₁ − P₂';
+    if (w1 === 0 && w2 === 1 && w3 === -1) return '差動 P₂ − P₃';
+    if (w1 === 1 && w2 === 0 && w3 === -1) return '差動 P₁ − P₃';
+
+    return `カスタム合成 w₁=${w1.toFixed(2)}, w₂=${w2.toFixed(2)}, w₃=${w3.toFixed(2)}`;
+}
+
+function update() {
+    let alpha1 = parseFloat(alpha1Input.value);
+    let beta1  = parseFloat(beta1Input.value);
+    let alphaMid, betaMid, alpha2, beta2;
+
+    if (linkPatternInput.checked) {
+        alphaMid = alpha1;
+        betaMid  = beta1;
+        alpha2   = alpha1;
+        beta2    = beta1;
+
+        alphaMidInput.value = alpha1Input.value;
+        betaMidInput.value  = beta1Input.value;
+        alpha2Input.value   = alpha1Input.value;
+        beta2Input.value    = beta1Input.value;
+
+        alphaMidInput.disabled = true;
+        betaMidInput.disabled  = true;
+        alpha2Input.disabled   = true;
+        beta2Input.disabled    = true;
+    } else {
+        alphaMidInput.disabled = false;
+        betaMidInput.disabled  = false;
+        alpha2Input.disabled   = false;
+        beta2Input.disabled    = false;
+
+        alphaMid = parseFloat(alphaMidInput.value);
+        betaMid  = parseFloat(betaMidInput.value);
+        alpha2   = parseFloat(alpha2Input.value);
+        beta2    = parseFloat(beta2Input.value);
+    }
+
+    const D_front_mm = parseFloat(DFrontSlider.value);
+    const D_back_mm  = parseFloat(DBackSlider.value);
+    const f          = parseFloat(FSlider.value);
+    const showSign   = showSignInput.checked;
+    const phiDeg     = parseFloat(orientSlider.value);
+    const phiRad     = degToRad(phiDeg);
+    const useFrontNorm = normalizeFrontInput.checked;
+
+    let w1 = parseFloat(w1Input.value);
+    let w2 = parseFloat(w2Input.value);
+    let w3 = parseFloat(w3Input.value);
+    if (isNaN(w1)) w1 = 0;
+    if (isNaN(w2)) w2 = 0;
+    if (isNaN(w3)) w3 = 0;
+
+    const D_front_m = D_front_mm / 1000.0;
+    const D_back_m  = D_back_mm  / 1000.0;
+    const lam       = C_SOUND / f;
+
+    DFrontValue.textContent =
+        `D_front = ${D_front_mm.toFixed(1)} mm  （D_front/λ = ${(D_front_m / lam).toFixed(3)}）`;
+    DBackValue.textContent  =
+        `D_back  = ${D_back_mm.toFixed(1)} mm  （D_back/λ  = ${(D_back_m  / lam).toFixed(3)}）`;
+    FValue.textContent =
+        `f = ${f.toFixed(0)} Hz   （λ ≒ ${lam.toFixed(3)} m）`;
+    orientValue.textContent =
+        `φ = ${phiDeg.toFixed(0)}°  （0°=前後, 90°=左右）`;
+
+    const mixLabel = getMixLabel(w1, w2, w3);
+
+    // 生パターン計算（3マイク）
+    const raw = computePatternRawThree(
+        D_front_m, D_back_m, f,
+        alpha1, beta1,
+        alphaMid, betaMid,
+        alpha2, beta2,
+        w1, w2, w3,
+        720,
+        phiRad
+    );
+
+    // 正規化
+    const magsRaw = raw.magsRaw;
+    const signs = raw.signs;
+    const thetaArr = raw.thetaArr;
+
+    let magsNorm = new Array(magsRaw.length);
+    if (useFrontNorm) {
+        const frontMagRaw = magsRaw[0] || 1.0;
+        for (let i = 0; i < magsRaw.length; i++) {
+            magsNorm[i] = frontMagRaw > 0 ? magsRaw[i] / frontMagRaw : 0;
+        }
+    } else {
+        let maxRaw = 0;
+        for (let i = 0; i < magsRaw.length; i++) {
+            if (magsRaw[i] > maxRaw) maxRaw = magsRaw[i];
+        }
+        if (maxRaw <= 0) maxRaw = 1.0;
+        for (let i = 0; i < magsRaw.length; i++) {
+            magsNorm[i] = magsRaw[i] / maxRaw;
+        }
+    }
+
+    const pattern = { thetaArr, mags: magsNorm, magsRaw, signs };
+    lastPattern = pattern;
+
+    const metrics = computeMetrics(pattern);
+    const DI_dB = metrics.DI_dB;
+    const fb_dB = metrics.fb_dB;
+    const beamwidthDeg = metrics.beamwidthDeg;
+
+    statusEl.innerHTML =
+        `前マイク: D₁(θ) = ${alpha1.toFixed(2)} + ${beta1.toFixed(2)} cosθ<br>` +
+        `中央マイク: D₂(θ) = ${alphaMid.toFixed(2)} + ${betaMid.toFixed(2)} cosθ<br>` +
+        `後マイク: D₃(θ) = ${alpha2.toFixed(2)} + ${beta2.toFixed(2)} cosθ<br>` +
+        `3つのマイクは同じ向き（0° = 下 = 南）で、中央マイクを基準に D_front, D_back をあけて配置。<br>` +
+        `マイク列の向き φ = ${phiDeg.toFixed(0)}°<br>` +
+        `正規化モード: <b>${useFrontNorm ? '前方0°を0 dB' : '最大値を0 dB'}</b><br>` +
+        `出力合成: <b>${mixLabel}</b><br>` +
+        `前/後比 ≈ ${Number.isFinite(fb_dB) ? fb_dB.toFixed(1) + ' dB' : '∞ dB'}<br>` +
+        `指向性指数 DI ≈ ${DI_dB.toFixed(1)} dB<br>` +
+        `ビーム幅 (−6 dB) ≈ ${beamwidthDeg.toFixed(1)}°`;
+
+    drawPolar(thetaArr, magsNorm, signs, showSign);
+}
+
+// マウスホバーで角度＆レベル表示（正規化後の値を表示）
+canvas.addEventListener('mousemove', (e) => {
+    if (!lastPattern) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    const relX = x - cx;
+    const relY = y - cy;
+    const r = Math.sqrt(relX * relX + relY * relY);
+
+    if (r < 5) {
+        hoverInfoEl.textContent = '';
+        return;
+    }
+
+    let theta = Math.atan2(relX, relY);
+    if (theta < 0) theta += 2 * Math.PI;
+    const deg = theta * 180 / Math.PI;
+
+    const thetaArr = lastPattern.thetaArr;
+    const mags = lastPattern.mags;
+    const signs = lastPattern.signs;
+    const N = thetaArr.length;
+
+    const idx = Math.round(theta / (2 * Math.PI) * (N - 1));
+    const mag = mags[idx];
+    const db = mag > 0 ? 20 * Math.log10(mag) : -120;
+    const sign = signs[idx] >= 0 ? '+' : '−';
+
+    hoverInfoEl.textContent =
+        `角度: ${deg.toFixed(1)}°, レベル(表示系): ${db.toFixed(1)} dB (線形=${mag.toFixed(3)}), 符号: ${sign}`;
+});
+
+canvas.addEventListener('mouseleave', () => {
+    hoverInfoEl.textContent = '';
+});
+
+// PNG エクスポート
+exportPngBtn.addEventListener('click', () => {
+    const link = document.createElement('a');
+    link.href = canvas.toDataURL('image/png');
+    const now = new Date();
+    const ts = now.toISOString().replace(/[:.]/g, '-');
+    link.download = `polar_pattern_${ts}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+});
+
+// CSV エクスポート（現在の表示系に合わせた正規化値）
+exportCsvBtn.addEventListener('click', () => {
+    if (!lastPattern) return;
+    const { thetaArr, mags, signs } = lastPattern;
+    let csv = 'theta_deg,mag_linear_norm,mag_dB_norm,sign\n';
+    for (let i = 0; i < thetaArr.length; i++) {
+        const thetaDeg = thetaArr[i] * 180 / Math.PI;
+        const m = mags[i];
+        const db = m > 0 ? 20 * Math.log10(m) : -120;
+        const s = signs[i];
+        csv += `${thetaDeg.toFixed(2)},${m.toFixed(6)},${db.toFixed(2)},${s}\n`;
+    }
+    const blob = new Blob([csv], {type: 'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const now = new Date();
+    const ts = now.toISOString().replace(/[:.]/g, '-');
+    link.download = `polar_pattern_${ts}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+});
+
+update();
+</script>
+
+
+
+</body>
+</html>

@@ -1,0 +1,717 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Advanced Pro: 指向性マイクアレイ解析シミュレータ</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            background: #0f172a;
+            color: #e5e7eb;
+            overflow: hidden;
+        }
+        /* --- Layout --- */
+        #sidebar {
+            width: 360px;
+            padding: 16px;
+            background: #020617;
+            border-right: 1px solid #1f2937;
+            box-sizing: border-box;
+            overflow-y: auto;
+            flex-shrink: 0;
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        #main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 16px;
+            gap: 16px;
+            overflow-y: auto;
+            background: #0f172a;
+        }
+        .top-pane {
+            display: flex;
+            gap: 16px;
+            min-height: 380px;
+        }
+        .bottom-pane {
+            display: flex;
+            flex: 1;
+            min-height: 250px;
+            gap: 16px;
+        }
+
+        /* --- Components --- */
+        .canvas-container {
+            flex: 1;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .canvas-title {
+            font-size: 13px;
+            margin-bottom: 6px;
+            color: #93c5fd;
+            font-weight: bold;
+            align-self: flex-start;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+        }
+        canvas {
+            background: #0f172a;
+            border-radius: 4px;
+            cursor: crosshair;
+        }
+        
+        /* --- Controls --- */
+        h1 { font-size: 16px; margin: 0; color: #fff; }
+        h2 { 
+            font-size: 13px; margin: 8px 0 4px; color: #94a3b8; 
+            text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #334155; padding-bottom: 2px;
+        }
+        .control-group { display: flex; flex-direction: column; gap: 6px; }
+        label { font-size: 12px; color: #cbd5e1; display: flex; justify-content: space-between; }
+        input[type="range"] { width: 100%; margin: 2px 0; accent-color: #3b82f6; }
+        input[type="number"] {
+            background: #0f172a; border: 1px solid #475569; color: #fff;
+            border-radius: 4px; padding: 2px 6px; width: 50px; font-size: 12px;
+        }
+        .row { display: flex; gap: 8px; align-items: center; }
+        .btn-row { display: flex; gap: 4px; flex-wrap: wrap; }
+        button {
+            background: #334155; color: #e2e8f0; border: 1px solid #475569;
+            border-radius: 4px; padding: 3px 8px; font-size: 11px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:hover { background: #475569; }
+        button.active { background: #2563eb; border-color: #3b82f6; color: #fff; }
+        button.action-btn { background: #059669; border-color: #10b981; }
+        button.action-btn:hover { background: #047857; }
+        
+        /* --- Metrics & Legend --- */
+        .metrics-box {
+            background: #1e293b; border: 1px solid #334155; border-radius: 6px;
+            padding: 8px; font-size: 11px; display: grid;
+            grid-template-columns: 1fr 1fr; gap: 4px 8px;
+        }
+        .metric-item { display: flex; justify-content: space-between; }
+        .metric-val { font-weight: bold; color: #6ee7b7; }
+        .note { font-size: 10px; color: #94a3b8; margin-top: 4px; line-height: 1.3; }
+        .legend { display: flex; gap: 8px; font-size: 10px; color: #cbd5e1; margin-top: 4px; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+        /* --- Tooltip --- */
+        #tooltip {
+            position: fixed; pointer-events: none; background: rgba(0,0,0,0.85);
+            color: #fff; padding: 4px 8px; border-radius: 4px; font-size: 11px;
+            border: 1px solid #475569; z-index: 100; display: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="sidebar">
+    <div>
+        <h1>Advanced Mic Array Sim</h1>
+        <div class="note">2素子エンドファイア/ブロードサイド アレイ解析</div>
+    </div>
+
+    <!-- Preset Controls -->
+    <div class="control-group">
+        <h2>1. マイクユニット設定 (単体)</h2>
+        <div class="row" style="font-size:11px;">
+            <input type="checkbox" id="linkPattern" checked> <label for="linkPattern">前後リンク</label>
+        </div>
+        <div class="row">
+            <label>Front (α, β)</label>
+            <input id="alpha1" type="number" step="0.05" value="0.5">
+            <input id="beta1" type="number" step="0.05" value="0.5">
+        </div>
+        <div class="row">
+            <label>Rear (α, β)</label>
+            <input id="alpha2" type="number" step="0.05" value="0.5" disabled>
+            <input id="beta2" type="number" step="0.05" value="0.5" disabled>
+        </div>
+        <div class="btn-row">
+            <button class="preset" data-a="1" data-b="0">Omni</button>
+            <button class="preset" data-a="0.5" data-b="0.5">Cardioid</button>
+            <button class="preset" data-a="0" data-b="1">Fig-8</button>
+            <button class="preset" data-a="0.25" data-b="0.75">Hyper</button>
+        </div>
+    </div>
+
+    <!-- Array Config -->
+    <div class="control-group">
+        <h2>2. アレイ構成 & モード</h2>
+        <div class="btn-row" id="modeSelect">
+            <button class="mode-btn" data-val="p1">Mic1</button>
+            <button class="mode-btn" data-val="p2">Mic2</button>
+            <button class="mode-btn active" data-val="diff">差 (Diff)</button>
+            <button class="mode-btn" data-val="sum">和 (Sum)</button>
+        </div>
+        
+        <label style="margin-top:6px;">マイク間隔 D: <span id="valD">20</span> mm</label>
+        <input id="D" type="range" min="0" max="300" step="1" value="20">
+        
+        <label>アレイ回転 φ: <span id="valPhi">0</span>°</label>
+        <input id="orientation" type="range" min="0" max="180" step="1" value="0">
+    </div>
+
+    <!-- Analysis Freq -->
+    <div class="control-group">
+        <h2>3. 解析周波数</h2>
+        <label>Frequency: <span id="valFreq">1000</span> Hz</label>
+        <input id="freq" type="range" min="100" max="20000" step="10" value="1000">
+    </div>
+
+    <!-- Metrics Panel -->
+    <div class="control-group">
+        <h2>4. 性能メトリクス (Current Freq)</h2>
+        <div class="metrics-box">
+            <div class="metric-item"><span>Front Sens:</span> <span class="metric-val" id="mSens">-</span></div>
+            <div class="metric-item"><span>DI (指数):</span> <span class="metric-val" id="mDI">-</span></div>
+            <div class="metric-item"><span>F/B Ratio:</span> <span class="metric-val" id="mFB">-</span></div>
+            <div class="metric-item"><span>-3dB Beam:</span> <span class="metric-val" id="mBeam">-</span></div>
+        </div>
+    </div>
+
+    <!-- Comparison -->
+    <div class="control-group">
+        <h2>5. ツール</h2>
+        <div class="btn-row">
+            <button id="btnFreeze" style="flex:1;">比較用に固定 (Freeze)</button>
+            <button id="btnClearFreeze" style="flex:1;">解除</button>
+        </div>
+        <div class="row" style="margin-top:6px;">
+            <input type="checkbox" id="normPlot"> <label for="normPlot" style="font-size:11px;">極座標を最大値で正規化</label>
+        </div>
+    </div>
+</div>
+
+<div id="main">
+    <!-- Top: Polar & Frequency Response -->
+    <div class="top-pane">
+        <!-- Polar Plot -->
+        <div class="canvas-container" style="flex:1;">
+            <div class="canvas-title">
+                <span>極座標パターン (Polar Pattern)</span>
+                <span style="font-weight:normal; opacity:0.7;">f = <span id="lblFreqPolar">1000</span>Hz</span>
+            </div>
+            <canvas id="polarCanvas" width="350" height="350"></canvas>
+            <div class="legend">
+                <span><span class="dot" style="background:#f97316;"></span>Current</span>
+                <span><span class="dot" style="background:#475569;"></span>Freeze</span>
+            </div>
+        </div>
+
+        <!-- Frequency Response -->
+        <div class="canvas-container" style="flex:1;">
+            <div class="canvas-title">
+                <span>周波数特性 (Frequency Response)</span>
+                <div class="btn-row">
+                    <button id="btnShowMag" class="active" style="padding:1px 6px;">Mag</button>
+                    <button id="btnShowPhase" style="padding:1px 6px;">Phase</button>
+                </div>
+            </div>
+            <canvas id="respCanvas" width="400" height="350"></canvas>
+            <div class="legend">
+                <span><span class="dot" style="background:#10b981;"></span>0° Gain</span>
+                <span><span class="dot" style="background:#ef4444;"></span>180° Gain</span>
+                <span><span class="dot" style="background:#3b82f6;"></span>DI (dB)</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom: Heatmap -->
+    <div class="bottom-pane">
+        <div class="canvas-container" style="width:100%;">
+            <div class="canvas-title">
+                <span>指向性カラーマップ (Directivity Heatmap)</span>
+                <span class="note">X:周波数 / Y:角度 / Color:相対レベル(dB)</span>
+            </div>
+            <canvas id="mapCanvas" width="800" height="220"></canvas>
+        </div>
+    </div>
+</div>
+
+<div id="tooltip"></div>
+
+<script>
+// --- Constants & Globals ---
+const C_SOUND = 343.0;
+let frozenPattern = null;
+let showPhase = false;
+
+// --- Elements ---
+const els = {
+    alpha1: document.getElementById('alpha1'),
+    beta1: document.getElementById('beta1'),
+    alpha2: document.getElementById('alpha2'),
+    beta2: document.getElementById('beta2'),
+    link: document.getElementById('linkPattern'),
+    D: document.getElementById('D'),
+    orient: document.getElementById('orientation'),
+    freq: document.getElementById('freq'),
+    valD: document.getElementById('valD'),
+    valPhi: document.getElementById('valPhi'),
+    valFreq: document.getElementById('valFreq'),
+    lblFreqPolar: document.getElementById('lblFreqPolar'),
+    normPlot: document.getElementById('normPlot'),
+    tooltip: document.getElementById('tooltip'),
+    // Metrics
+    mSens: document.getElementById('mSens'),
+    mDI: document.getElementById('mDI'),
+    mFB: document.getElementById('mFB'),
+    mBeam: document.getElementById('mBeam'),
+};
+const cvs = {
+    polar: document.getElementById('polarCanvas').getContext('2d'),
+    resp: document.getElementById('respCanvas').getContext('2d'),
+    map: document.getElementById('mapCanvas').getContext('2d')
+};
+
+let currentMode = 'diff';
+
+// --- Event Listeners ---
+// Presets
+document.querySelectorAll('.preset').forEach(b => b.addEventListener('click', e => {
+    const a = e.target.dataset.a, b_val = e.target.dataset.b;
+    els.alpha1.value = a; els.beta1.value = b_val;
+    if(els.link.checked) { els.alpha2.value = a; els.beta2.value = b_val; }
+    update();
+}));
+
+// Mode Select
+document.querySelectorAll('.mode-btn').forEach(b => b.addEventListener('click', e => {
+    document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+    e.target.classList.add('active');
+    currentMode = e.target.dataset.val;
+    update();
+}));
+
+// Inputs
+[els.D, els.orient, els.freq, els.alpha1, els.beta1, els.alpha2, els.beta2, els.link, els.normPlot]
+    .forEach(el => el.addEventListener('input', update));
+
+// Freeze
+document.getElementById('btnFreeze').addEventListener('click', () => {
+    // 現在の描画と同じ計算関数(doCalc)を使ってスナップショットをとる
+    frozenPattern = doCalc(
+        parseFloat(els.freq.value), 
+        getParams()
+    );
+    update();
+});
+document.getElementById('btnClearFreeze').addEventListener('click', () => {
+    frozenPattern = null;
+    update();
+});
+
+// Graph Toggle
+document.getElementById('btnShowMag').addEventListener('click', (e) => { showPhase=false; toggleGraphBtn(e); update(); });
+document.getElementById('btnShowPhase').addEventListener('click', (e) => { showPhase=true; toggleGraphBtn(e); update(); });
+
+function toggleGraphBtn(e) {
+    document.querySelectorAll('#btnShowMag, #btnShowPhase').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+}
+
+// --- Core Math ---
+
+function getParams() {
+    let a1 = parseFloat(els.alpha1.value);
+    let b1 = parseFloat(els.beta1.value);
+    if(els.link.checked) {
+        els.alpha2.value = a1; els.beta2.value = b1;
+        els.alpha2.disabled = true; els.beta2.disabled = true;
+        return { a1, b1, a2:a1, b2:b1, D: parseFloat(els.D.value)/1000, phi: parseFloat(els.orient.value), mode: currentMode };
+    } else {
+        els.alpha2.disabled = false; els.beta2.disabled = false;
+        return { 
+            a1, b1, 
+            a2: parseFloat(els.alpha2.value), b2: parseFloat(els.beta2.value),
+            D: parseFloat(els.D.value)/1000, phi: parseFloat(els.orient.value), mode: currentMode 
+        };
+    }
+}
+
+function micResponse(theta, alpha, beta) {
+    // Standard limaçon: alpha + beta*cos(theta)
+    return alpha + beta * Math.cos(theta);
+}
+
+
+// Re-implementing loop correctly inside calculatePolarArray was implicit above, 
+// here is the actual clean function used in update()
+function doCalc(f, p) {
+    const k = 2 * Math.PI * f / C_SOUND;
+    const phiRad = p.phi * Math.PI / 180;
+    
+    const res = {
+        mags: new Float32Array(360),
+        phases: new Float32Array(360),
+        max: 0, front: 0, back: 0, di: 0, beam: 0
+    };
+
+    let sumSq = 0;
+    for(let i=0; i<360; i++){
+        const th = i * Math.PI / 180;
+        // Mics are fixed facing 0 degrees for individual pattern
+        const g1 = p.a1 + p.b1 * Math.cos(th);
+        const g2 = p.a2 + p.b2 * Math.cos(th);
+
+        // Array geometry relative to incoming wave
+        // Wave comes from th. Array axis is phiRad.
+        // Path difference projection:
+        const delta = th - phiRad;
+        const d_phase = k * (p.D/2) * Math.cos(delta);
+
+        // P1 (front/right usually +d/2), P2 (rear/left -d/2)
+        // Complex P1
+        const r1 = g1 * Math.cos(d_phase);
+        const i1 = g1 * Math.sin(d_phase);
+        // Complex P2
+        const r2 = g2 * Math.cos(-d_phase);
+        const i2 = g2 * Math.sin(-d_phase);
+
+        let R, I;
+        if (p.mode === 'sum') { R=r1+r2; I=i1+i2; }
+        else if (p.mode === 'diff') { R=r1-r2; I=i1-i2; }
+        else if (p.mode === 'p1') { R=r1; I=i1; }
+        else { R=r2; I=i2; } // p2
+
+        const mag = Math.sqrt(R*R + I*I);
+        res.mags[i] = mag;
+        res.phases[i] = Math.atan2(I, R);
+        
+        if(mag > res.max) res.max = mag;
+        sumSq += mag*mag;
+    }
+    
+    res.front = res.mags[0];
+    res.back = res.mags[180];
+    const meanSq = sumSq / 360;
+    
+    // DI based on Front (Standard is max, but for fixed array Front is focus)
+    // Avoiding log(0)
+    const pFront = res.front*res.front;
+    res.di = (pFront > 1e-8 && meanSq > 1e-8) ? 10*Math.log10(pFront/meanSq) : -99;
+    
+    // Beamwidth (-3dB of Max)
+    const thr = res.max * 0.707;
+    // Find continuous segment around max or just sum degrees above threshold?
+    // Just sum is a good approx for single main lobe
+    let bw = 0;
+    for(let i=0; i<360; i++) if(res.mags[i]>=thr) bw++;
+    res.beam = bw;
+
+    return res;
+}
+
+// --- Rendering ---
+
+function update() {
+    const params = getParams();
+    const f = parseFloat(els.freq.value);
+
+    // UI Text
+    els.valD.textContent = (params.D * 1000).toFixed(0);
+    els.valPhi.textContent = params.phi;
+    els.valFreq.textContent = f;
+    els.lblFreqPolar.textContent = f;
+
+    // 1. Calc Current Pattern
+    const curr = doCalc(f, params);
+
+    // 2. Calc Sweep (Response)
+    const freqs = [];
+    const gain0 = [];
+    const gain180 = [];
+    const diCurve = [];
+    const phases = []; // at 0 deg
+    
+    const minF = 100, maxF = 20000, steps = 100;
+    for(let i=0; i<=steps; i++){
+        const fr = minF * Math.pow(maxF/minF, i/steps);
+        const r = doCalc(fr, params);
+        freqs.push(fr);
+        gain0.push(r.front);
+        gain180.push(r.back);
+        diCurve.push(r.di);
+        phases.push(r.phases[0]); // Phase at front
+    }
+
+    // 3. Update Metrics UI
+    updateMetrics(curr);
+
+    // 4. Draw Polar
+    drawPolar(curr, frozenPattern, params, els.normPlot.checked);
+
+    // 5. Draw Response
+    drawResponse(freqs, gain0, gain180, diCurve, phases, f);
+
+    // 6. Draw Heatmap (Lazy update for performance? No, it's fast enough)
+    drawHeatmap(params);
+}
+
+function updateMetrics(d) {
+    // Sens
+    const sDb = d.front > 1e-5 ? (20*Math.log10(d.front)).toFixed(1) : "-Inf";
+    els.mSens.textContent = `${sDb} dB`;
+    // DI
+    els.mDI.textContent = d.di > -90 ? d.di.toFixed(1) + " dB" : "-";
+    // F/B
+    let fb = "0.0";
+    if (d.front > 1e-5) {
+        if (d.back < 1e-6) fb = "> 60";
+        else fb = (20*Math.log10(d.front/d.back)).toFixed(1);
+    }
+    els.mFB.textContent = fb + " dB";
+    // Beam
+    els.mBeam.textContent = d.beam + "°";
+}
+
+function drawPolar(curr, frozen, p, norm) {
+    const ctx = cvs.polar;
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const cx = w/2, cy = h/2;
+    const rMax = w*0.45;
+    
+    ctx.clearRect(0,0,w,h);
+    
+    // Grid
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    [0.33, 0.66, 1].forEach(r => ctx.arc(cx, cy, rMax*r, 0, 2*Math.PI));
+    for(let i=0; i<12; i++) {
+        const th = i*Math.PI/6;
+        ctx.moveTo(cx, cy); ctx.lineTo(cx+rMax*Math.sin(th), cy-rMax*Math.cos(th));
+    }
+    ctx.stroke();
+    // Labels
+    ctx.fillStyle = '#64748b'; ctx.font = '10px sans-serif'; ctx.textAlign='center';
+    ctx.fillText("0°", cx, cy-rMax-4);
+    ctx.fillText("90°", cx+rMax+10, cy+3);
+    
+    // Scale
+    let maxVal = norm ? curr.max : 2.0; // Fixed scale if not normalized
+    if(maxVal < 1e-5) maxVal = 1;
+
+    const drawPoly = (data, color, dash) => {
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        if(dash) ctx.setLineDash([4,2]); else ctx.setLineDash([]);
+        
+        for(let i=0; i<360; i++){
+            const th = i * Math.PI / 180; // 0 is up in calculation? 
+            // In doCalc: 0 deg is "front".
+            // On Canvas: Up is -Y. 
+            // x = r * sin(th), y = -r * cos(th) matches standard polar (0 up, CW)
+            const r = (data.mags[i] / maxVal) * rMax;
+            const x = cx + r * Math.sin(th);
+            const y = cy - r * Math.cos(th);
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+    };
+
+    if(frozen) drawPoly(frozen, '#475569', true);
+    drawPoly(curr, '#f97316', false);
+    ctx.setLineDash([]);
+}
+
+function drawResponse(freqs, g0, g180, dis, phases, curF) {
+    const ctx = cvs.resp;
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const pad = {t:20, r:40, b:30, l:40};
+    
+    ctx.clearRect(0,0,w,h);
+    
+    // Grid Logic
+    const minF=100, maxF=20000;
+    const mapX = f => pad.l + (Math.log10(f/minF)/Math.log10(maxF/minF))*(w-pad.l-pad.r);
+    
+    // Y Axis: dB (-40 to +10) OR Phase (-180 to 180)
+    const minDb=-40, maxDb=10;
+    const mapY = v => h - pad.b - ((v - minDb)/(maxDb-minDb))*(h-pad.b-pad.t);
+    const mapYPh = deg => h - pad.b - ((deg + 180)/360)*(h-pad.b-pad.t);
+
+    // Draw Grid
+    ctx.strokeStyle = '#334155'; ctx.lineWidth=1; ctx.beginPath();
+    // X
+    [100, 1000, 10000].forEach(f=>{
+        const x = mapX(f); ctx.moveTo(x, pad.t); ctx.lineTo(x, h-pad.b);
+    });
+    // Y
+    if(!showPhase) {
+        for(let d=minDb; d<=maxDb; d+=10){
+            const y = mapY(d); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y);
+        }
+    } else {
+        for(let d=-180; d<=180; d+=90){
+            const y = mapYPh(d); ctx.moveTo(pad.l, y); ctx.lineTo(w-pad.r, y);
+        }
+    }
+    ctx.stroke();
+
+    // Current Freq Line
+    const cx = mapX(curF);
+    ctx.strokeStyle = '#ef4444'; ctx.setLineDash([2,2]);
+    ctx.beginPath(); ctx.moveTo(cx, pad.t); ctx.lineTo(cx, h-pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+
+    const plotLine = (arr, color, mapper) => {
+        ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth=2;
+        for(let i=0; i<freqs.length; i++){
+            const x = mapX(freqs[i]);
+            let val = arr[i];
+            if(!mapper) {
+                // Default dB mapping
+                val = (val > 1e-6) ? 20*Math.log10(val) : -100;
+                val = mapY(val);
+            } else {
+                val = mapper(val);
+            }
+            if(i===0) ctx.moveTo(x,val); else ctx.lineTo(x,val);
+        }
+        ctx.stroke();
+    };
+
+    if(!showPhase) {
+        plotLine(g0, '#10b981'); // Front
+        plotLine(g180, '#ef4444'); // Back
+        // DI is already dB
+        ctx.beginPath(); ctx.strokeStyle='#3b82f6'; ctx.lineWidth=2;
+        for(let i=0; i<freqs.length; i++){
+            const x = mapX(freqs[i]);
+            const y = mapY(dis[i]);
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+    } else {
+        // Phase plot (Front axis)
+        ctx.beginPath(); ctx.strokeStyle='#f59e0b'; ctx.lineWidth=2;
+        for(let i=0; i<freqs.length; i++){
+            const x = mapX(freqs[i]);
+            const deg = phases[i] * 180 / Math.PI;
+            const y = mapYPh(deg);
+            if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+    }
+
+    // Axis Text
+    ctx.fillStyle = '#94a3b8'; ctx.textAlign='center';
+    ctx.fillText("100", mapX(100), h-10); ctx.fillText("1k", mapX(1000), h-10); ctx.fillText("10k", mapX(10000), h-10);
+}
+
+function drawHeatmap(p) {
+    const ctx = cvs.map;
+    const w = ctx.canvas.width, h = ctx.canvas.height;
+    const fSteps = 80; 
+    const aSteps = 36; // every 10 deg
+    
+    // Turbo colormap approx
+    const getColor = (db) => {
+        // Range: -30dB to 0dB usually
+        let t = (db + 30) / 30; // 0..1
+        if(t<0) t=0; if(t>1) t=1;
+        // Simple Blue-Green-Red-Yellow heat
+        const hue = 240 * (1-t);
+        return `hsl(${hue}, 80%, 50%)`;
+    };
+
+    // To avoid re-calculating everything every frame if not needed,
+    // we could cache. But for 80*36=2880 points, it's fast.
+    
+    const minF=100, maxF=20000;
+    const cellW = w / fSteps;
+    const cellH = h / aSteps;
+
+    // Pre-calc normalization factor at each freq? Or Global norm?
+    // Usually Sonograms are normalized per frequency (to show shape) OR global (to show filter effect).
+    // Let's use "Relative to Front" (Shape) to see directivity, 
+    // OR "Absolute" to see low-pass effects. 
+    // Let's do Absolute but clamped colors.
+
+    for(let i=0; i<fSteps; i++) {
+        const f = minF * Math.pow(maxF/minF, (i+0.5)/fSteps);
+        const res = doCalc(f, p);
+        
+        // Reference for dB? Let's use Max at this freq (normalized directivity map)
+        // This highlights the pattern shape changes, ignoring simple EQ slopes.
+        const ref = res.max; 
+
+        for(let j=0; j<aSteps; j++) {
+            // Angle 0 is middle of Y axis usually? Or 0 at top?
+            // Let's put 0 at Center Y. -180 to +180.
+            // j=0 -> -180, j=max -> +180
+            const deg = -180 + (j * 360 / aSteps);
+            // Map deg to 0..360 index
+            let dIdx = Math.round(deg);
+            if(dIdx < 0) dIdx += 360;
+            if(dIdx >= 360) dIdx = 0;
+            
+            const mag = res.mags[dIdx];
+            const normVal = (ref > 1e-6) ? mag/ref : 0;
+            const db = (normVal > 1e-4) ? 20*Math.log10(normVal) : -60;
+            
+            ctx.fillStyle = getColor(db);
+            // Y axis: 0 deg (Front) in middle
+            // Canvas Y=0 is top. 
+            ctx.fillRect(i*cellW, j*cellH, cellW+1, cellH+1);
+        }
+    }
+    
+    // Overlay text
+    ctx.fillStyle = "rgba(255,255,255,0.8)";
+    ctx.font = "10px sans-serif";
+    ctx.fillText("-180°", 5, 10);
+    ctx.fillText("0° (Front)", 5, h/2 + 3);
+    ctx.fillText("+180°", 5, h-5);
+}
+
+// Tooltip logic for Heatmap
+document.getElementById('mapCanvas').addEventListener('mousemove', e => {
+    const r = e.target.getBoundingClientRect();
+    const x = e.clientX - r.left;
+    const y = e.clientY - r.top;
+    const w = r.width, h = r.height;
+    
+    const minF=100, maxF=20000;
+    const f = minF * Math.pow(maxF/minF, x/w);
+    const deg = -180 + (y/h)*360;
+    
+    els.tooltip.style.display = 'block';
+    els.tooltip.style.left = (e.clientX + 10) + 'px';
+    els.tooltip.style.top = (e.clientY + 10) + 'px';
+    els.tooltip.textContent = `${f.toFixed(0)}Hz / ${deg.toFixed(0)}°`;
+});
+document.getElementById('mapCanvas').addEventListener('mouseleave', () => {
+    els.tooltip.style.display = 'none';
+});
+
+// Init
+update();
+
+</script>
+</body>
+</html>
