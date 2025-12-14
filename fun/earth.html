@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Earth History - Flexible JSON</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --text-color: #e2e8f0;
+            --accent-color: #38bdf8;
+            --secondary-color: #94a3b8;
+            --card-bg: #1e293b;
+            --timeline-line: #334155;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 0;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        header {
+            text-align: center;
+            padding: 4rem 1rem;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(90deg, #38bdf8, #818cf8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle { color: var(--secondary-color); font-size: 1rem; }
+
+        .timeline {
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem 1rem;
+            min-height: 200px;
+        }
+
+        .timeline::after {
+            content: '';
+            position: absolute;
+            width: 4px;
+            background-color: var(--timeline-line);
+            top: 0;
+            bottom: 0;
+            left: 50%;
+            margin-left: -2px;
+            border-radius: 2px;
+            z-index: 0;
+        }
+
+        .event {
+            padding: 10px 40px;
+            position: relative;
+            background-color: inherit;
+            width: 50%;
+            box-sizing: border-box;
+            opacity: 0; 
+            transform: translateY(20px);
+            transition: all 0.6s ease-out;
+            margin-bottom: 3rem;
+        }
+
+        .event.show { opacity: 1; transform: translateY(0); }
+        .left { left: 0; text-align: right; }
+        .right { left: 50%; text-align: left; }
+
+        .event::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            right: -10px;
+            background-color: var(--bg-color);
+            border: 4px solid var(--accent-color);
+            top: 20px;
+            border-radius: 50%;
+            z-index: 1;
+            transition: background-color 0.3s;
+        }
+        .right::after { left: -10px; }
+        .event:hover::after { background-color: var(--accent-color); box-shadow: 0 0 15px var(--accent-color); }
+
+        .content {
+            padding: 1.5rem;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            border: 1px solid #334155;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .content:hover { transform: scale(1.02); border-color: var(--accent-color); }
+        .content.future-style { border-color: #818cf8; }
+
+        .date { font-weight: bold; color: var(--accent-color); font-size: 1.1rem; margin-bottom: 0.5rem; display: block; }
+        h2 { margin-top: 0; font-size: 1.4rem; }
+
+        .details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out;
+            color: var(--secondary-color);
+            font-size: 0.95rem;
+            text-align: left;
+            margin-top: 0.5rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .event.active .details { max-height: 800px; padding-top: 1rem; }
+        .toggle-icon { display: inline-block; font-size: 0.8rem; margin-top: 0.5rem; color: var(--accent-color); }
+
+        /* Trivia Block Style */
+        .trivia-block {
+            margin-top: 1rem;
+            padding-top: 0.5rem;
+            border-top: 1px dashed rgba(255,255,255,0.1);
+        }
+
+        .badge {
+            display: inline-block;
+            background: #4f46e5;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-bottom: 0.5rem;
+            vertical-align: middle;
+            margin-right: 0.5rem;
+        }
+
+        #loading { text-align: center; margin-top: 20px; color: var(--secondary-color); }
+
+        @media screen and (max-width: 600px) {
+            .timeline::after { left: 31px; }
+            .event { width: 100%; padding-left: 70px; padding-right: 25px; }
+            .event::after { left: 21px; }
+            .left { text-align: left; }
+            .left::after { left: 21px; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>EARTH HISTORY (Flexible)</h1>
+    <p class="subtitle">トリビアがないデータも混在可能です。</p>
+</header>
+
+<div class="timeline" id="timeline-container">
+    <div id="loading">Loading data...</div>
+</div>
+
+<footer>
+    <p>Powered by JSON & JavaScript</p>
+</footer>
+
+<script>
+    async function loadTimelineData() {
+        try {
+            const response = await fetch('data.json');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const data = await response.json();
+            renderTimeline(data);
+        } catch (error) {
+            console.error('Error loading JSON:', error);
+            document.getElementById('loading').innerHTML = `
+                データの読み込みに失敗しました。<br>
+                <small>※ローカル環境(file://)の場合、VS CodeのLive Server等を使用してください。</small>
+            `;
+        }
+    }
+
+    function renderTimeline(events) {
+        const container = document.getElementById('timeline-container');
+        container.innerHTML = ''; 
+
+        events.forEach((item, index) => {
+            const sideClass = index % 2 === 0 ? 'left' : 'right';
+            const futureClass = item.isFuture ? 'future-style' : '';
+
+            // --- 修正箇所: トリビアがある場合だけHTMLを作る ---
+            let triviaHtml = '';
+            if (item.trivia) {
+                // item.triviaが存在する場合のみHTMLを作成
+                triviaHtml = `
+                    <div class="trivia-block">
+                        <span class="badge">${item.trivia.badge}</span>
+                        <strong>${item.trivia.title}</strong><br>
+                        ${item.trivia.text}
+                    </div>
+                `;
+            }
+            // ---------------------------------------------
+
+            const html = `
+                <div class="event ${sideClass}">
+                    <div class="content ${futureClass}">
+                        <span class="date">${item.year}</span>
+                        <h2>${item.title}</h2>
+                        <div class="toggle-icon">▼ 詳細を見る</div>
+                        <div class="details">
+                            <p>${item.description}</p>
+                            ${triviaHtml} <!-- ここに挿入（空文字なら何も出ない） -->
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+        });
+
+        setupInteractivity();
+    }
+
+    function setupInteractivity() {
+        const events = document.querySelectorAll('.event');
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('show');
+                }
+            });
+        }, { threshold: 0.1 });
+
+        events.forEach(event => observer.observe(event));
+
+        const contents = document.querySelectorAll('.content');
+        contents.forEach(content => {
+            content.addEventListener('click', function() {
+                const parentEvent = this.parentElement;
+                const toggleText = this.querySelector('.toggle-icon');
+                
+                parentEvent.classList.toggle('active');
+
+                if (parentEvent.classList.contains('active')) {
+                    toggleText.textContent = "▲ 閉じる";
+                } else {
+                    toggleText.textContent = "▼ 詳細を見る";
+                }
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', loadTimelineData);
+</script>
+
+</body>
+</html>
