@@ -3,6 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <title>3つの単一指向性マイク指向性シミュレータ</title>
+    <!-- Three.js (3D可視化用) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
     <style>
         body {
             font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -24,8 +33,10 @@
         #main {
             flex: 1;
             display: flex;
-            align-items: center;
-            justify-content: center;
+            align-items: stretch;
+            justify-content: stretch;
+            padding: 16px;
+            box-sizing: border-box;
         }
         canvas {
             background: #020617;
@@ -123,6 +134,81 @@
         }
         .link-row input {
             margin-right: 4px;
+        }
+
+        /* --- Main panel (tabs) --- */
+        #mainPanel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 0;
+        }
+        .view-tabs {
+            display: flex;
+            gap: 6px;
+            background: #020617;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            padding: 6px;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .tab-left {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            padding: 6px 10px;
+            font-size: 12px;
+            background: #0b1220;
+            color: #e5e7eb;
+            border-radius: 6px;
+            border: 1px solid #334155;
+            cursor: pointer;
+        }
+        .tab-btn.active {
+            border-color: #93c5fd;
+            background: #1f2937;
+        }
+        .tab-right {
+            display: flex;
+            gap: 10px;
+            font-size: 12px;
+            opacity: 0.9;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .view-host {
+            flex: 1;
+            position: relative;
+            border: 1px solid #1f2937;
+            border-radius: 8px;
+            background: #020617;
+            overflow: hidden;
+            min-height: 420px;
+        }
+        .view {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+        .view canvas {
+            display: block;
+        }
+        .view.show {
+            display: flex;
+        }
+        #threeContainer {
+            width: 100%;
+            height: 100%;
+        }
+        .mini-note {
+            font-size: 11px;
+            opacity: 0.85;
         }
     </style>
 </head>
@@ -274,6 +360,8 @@
     <div class="control">
         <button id="exportPng" class="preset">PNG 保存</button>
         <button id="exportCsv" class="preset">CSV 保存</button>
+        <button id="exportPng3d" class="preset">3D PNG 保存</button>
+        <button id="copyUrl" class="preset">設定URLコピー</button>
     </div>
 
     <h2>補足</h2>
@@ -287,7 +375,33 @@
 </div>
 
 <div id="main">
-    <canvas id="polarCanvas" width="640" height="640"></canvas>
+    <div id="mainPanel">
+        <div class="view-tabs" role="tablist" aria-label="表示切替">
+            <div class="tab-left">
+                <button class="tab-btn active" id="tab2d" data-view="view2d" type="button">2D Polar</button>
+                <button class="tab-btn" id="tab3d" data-view="view3d" type="button">3D Pattern</button>
+                <button class="tab-btn" id="tabFreq" data-view="viewfreq" type="button">周波数特性</button>
+            </div>
+            <div class="tab-right">
+                <span class="mini-note">ドラッグ: 角度/値（2D）・回転（3D）</span>
+                <label class="mini-note" style="display:flex; align-items:center; gap:6px;">
+                    <input type="checkbox" id="autoSave" checked>
+                    自動保存
+                </label>
+            </div>
+        </div>
+        <div class="view-host">
+            <div id="view2d" class="view show" role="tabpanel" aria-labelledby="tab2d">
+                <canvas id="polarCanvas" width="760" height="760"></canvas>
+            </div>
+            <div id="view3d" class="view" role="tabpanel" aria-labelledby="tab3d">
+                <div id="threeContainer"></div>
+            </div>
+            <div id="viewfreq" class="view" role="tabpanel" aria-labelledby="tabFreq">
+                <canvas id="respCanvas" width="980" height="760"></canvas>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -327,11 +441,168 @@ const showSignInput = document.getElementById('showSign');
 const normalizeFrontInput = document.getElementById('normalizeFront');
 const exportPngBtn = document.getElementById('exportPng');
 const exportCsvBtn = document.getElementById('exportCsv');
+const exportPng3dBtn = document.getElementById('exportPng3d');
+const copyUrlBtn = document.getElementById('copyUrl');
+
+const tabButtons = Array.from(document.querySelectorAll('.tab-btn'));
+const view2d = document.getElementById('view2d');
+const view3d = document.getElementById('view3d');
+const viewfreq = document.getElementById('viewfreq');
+const respCanvas = document.getElementById('respCanvas');
+const respCtx = respCanvas.getContext('2d');
+const autoSaveInput = document.getElementById('autoSave');
+
+const STORAGE_KEY = 'polar3_state_v1';
+let activeView = 'view2d';
+let rafScheduled = false;
+let lastSettingsForSweepKey = '';
+let lastSweepResult = null;
+
+function getDpr() {
+    return Math.min(window.devicePixelRatio || 1, 2);
+}
+
+function resizePolarCanvasToView() {
+    const dpr = getDpr();
+    const host = view2d;
+    if (!host) return;
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (!(w > 0 && h > 0)) return;
+    const sizeCss = Math.max(300, Math.floor(Math.min(w, h)));
+
+    canvas.style.width = `${sizeCss}px`;
+    canvas.style.height = `${sizeCss}px`;
+
+    const px = Math.floor(sizeCss * dpr);
+    if (canvas.width !== px || canvas.height !== px) {
+        canvas.width = px;
+        canvas.height = px;
+    }
+}
+
+function resizeRespCanvasToView() {
+    const dpr = getDpr();
+    const host = viewfreq;
+    if (!host) return;
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    if (!(w > 0 && h > 0)) return;
+
+    // Leave padding for axes labels; scale canvas to host
+    respCanvas.style.width = `${w}px`;
+    respCanvas.style.height = `${h}px`;
+    const pxW = Math.floor(w * dpr);
+    const pxH = Math.floor(h * dpr);
+    if (respCanvas.width !== pxW || respCanvas.height !== pxH) {
+        respCanvas.width = pxW;
+        respCanvas.height = pxH;
+    }
+}
+
+function resizeCanvases() {
+    if (activeView === 'view2d') resizePolarCanvasToView();
+    if (activeView === 'viewfreq') resizeRespCanvasToView();
+}
 
 let lastPattern = null; // {thetaArr, mags, magsRaw, signs}
 
 function degToRad(deg) {
     return deg * Math.PI / 180;
+}
+
+function clampNumber(x, fallback = 0) {
+    const v = Number(x);
+    return Number.isFinite(v) ? v : fallback;
+}
+
+function collectState() {
+    return {
+        alpha1: clampNumber(alpha1Input.value, 0.5),
+        beta1: clampNumber(beta1Input.value, 0.5),
+        alphaMid: clampNumber(alphaMidInput.value, 0.5),
+        betaMid: clampNumber(betaMidInput.value, 0.5),
+        alpha2: clampNumber(alpha2Input.value, 0.5),
+        beta2: clampNumber(beta2Input.value, 0.5),
+        linkPattern: !!linkPatternInput.checked,
+        w1: clampNumber(w1Input.value, 1),
+        w2: clampNumber(w2Input.value, 0),
+        w3: clampNumber(w3Input.value, 0),
+        D_front_mm: clampNumber(DFrontSlider.value, 20),
+        D_back_mm: clampNumber(DBackSlider.value, 20),
+        f: clampNumber(FSlider.value, 3000),
+        phiDeg: clampNumber(orientSlider.value, 0),
+        showSign: !!showSignInput.checked,
+        normalizeFront: !!normalizeFrontInput.checked,
+        activeView,
+        autoSave: !!autoSaveInput.checked,
+    };
+}
+
+// module script から参照できるよう公開
+window.__polar3_collectState = collectState;
+window.__polar3_scheduleUpdate = scheduleUpdate;
+
+function applyState(state) {
+    if (!state || typeof state !== 'object') return;
+
+    if (typeof state.linkPattern === 'boolean') linkPatternInput.checked = state.linkPattern;
+    if (typeof state.showSign === 'boolean') showSignInput.checked = state.showSign;
+    if (typeof state.normalizeFront === 'boolean') normalizeFrontInput.checked = state.normalizeFront;
+    if (typeof state.autoSave === 'boolean') autoSaveInput.checked = state.autoSave;
+
+    if (Number.isFinite(state.alpha1)) alpha1Input.value = String(state.alpha1);
+    if (Number.isFinite(state.beta1)) beta1Input.value = String(state.beta1);
+    if (Number.isFinite(state.alphaMid)) alphaMidInput.value = String(state.alphaMid);
+    if (Number.isFinite(state.betaMid)) betaMidInput.value = String(state.betaMid);
+    if (Number.isFinite(state.alpha2)) alpha2Input.value = String(state.alpha2);
+    if (Number.isFinite(state.beta2)) beta2Input.value = String(state.beta2);
+
+    if (Number.isFinite(state.w1)) w1Input.value = String(state.w1);
+    if (Number.isFinite(state.w2)) w2Input.value = String(state.w2);
+    if (Number.isFinite(state.w3)) w3Input.value = String(state.w3);
+
+    if (Number.isFinite(state.D_front_mm)) DFrontSlider.value = String(state.D_front_mm);
+    if (Number.isFinite(state.D_back_mm)) DBackSlider.value = String(state.D_back_mm);
+    if (Number.isFinite(state.f)) FSlider.value = String(state.f);
+    if (Number.isFinite(state.phiDeg)) orientSlider.value = String(state.phiDeg);
+
+    if (typeof state.activeView === 'string') {
+        activeView = state.activeView;
+    }
+}
+
+function base64UrlEncode(str) {
+    return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+function base64UrlDecode(str) {
+    const pad = str.length % 4 === 0 ? '' : '='.repeat(4 - (str.length % 4));
+    const b64 = str.replace(/-/g, '+').replace(/_/g, '/') + pad;
+    return atob(b64);
+}
+
+function setActiveView(viewId) {
+    activeView = viewId;
+    const views = [view2d, view3d, viewfreq];
+    views.forEach(v => v.classList.remove('show'));
+    document.getElementById(viewId)?.classList.add('show');
+
+    tabButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === viewId);
+    });
+
+    resizeCanvases();
+
+    scheduleUpdate();
+}
+
+function scheduleUpdate() {
+    if (rafScheduled) return;
+    rafScheduled = true;
+    requestAnimationFrame(() => {
+        rafScheduled = false;
+        update();
+    });
 }
 
 // α,β プリセットボタン
@@ -370,15 +641,66 @@ document.querySelectorAll('.mix-preset').forEach(btn => {
   normalizeFrontInput,
   orientSlider
 ].forEach(el => {
-    el.addEventListener('input', update);
+        el.addEventListener('input', scheduleUpdate);
+        el.addEventListener('change', scheduleUpdate);
 });
-linkPatternInput.addEventListener('change', update);
+linkPatternInput.addEventListener('change', scheduleUpdate);
+linkPatternInput.addEventListener('input', scheduleUpdate);
 
 // 単一マイクの基本指向性
 function cardioidBase(theta, alpha, beta) {
     // D(θ) = α + β cosθ
     return alpha + beta * Math.cos(theta);
 }
+
+// 3D用: 方向ベクトル u の "前方軸" 方向余弦 (cosγ) を使う
+function cardioidBaseCos(cosGamma, alpha, beta) {
+    return alpha + beta * cosGamma;
+}
+
+function computeOutComplexForDirection(
+    uX, uY, uZ,
+    D_front_m, D_back_m, f,
+    alpha1, beta1,
+    alphaMid, betaMid,
+    alpha2, beta2,
+    w1, w2, w3,
+    phiRad
+) {
+    const lam = C_SOUND / f;
+    const k = 2 * Math.PI / lam;
+
+    // アレイ軸（水平面内）
+    const aX = Math.sin(phiRad);
+    const aY = Math.cos(phiRad);
+    const dotUA = uX * aX + uY * aY;
+
+    // 前方軸は +Y（2Dの0°と整合）
+    const cosGamma = uY;
+
+    const g1 = cardioidBaseCos(cosGamma, alpha1, beta1);
+    const g2 = cardioidBaseCos(cosGamma, alphaMid, betaMid);
+    const g3 = cardioidBaseCos(cosGamma, alpha2, beta2);
+
+    const phase1 = k * ( D_front_m) * dotUA;
+    const phase2 = 0.0;
+    const phase3 = k * (-D_back_m) * dotUA;
+
+    const P1_re = g1 * Math.cos(phase1);
+    const P1_im = g1 * Math.sin(phase1);
+    const P2_re = g2 * Math.cos(phase2);
+    const P2_im = g2 * Math.sin(phase2);
+    const P3_re = g3 * Math.cos(phase3);
+    const P3_im = g3 * Math.sin(phase3);
+
+    return {
+        re: w1 * P1_re + w2 * P2_re + w3 * P3_re,
+        im: w1 * P1_im + w2 * P2_im + w3 * P3_im,
+    };
+}
+
+// 3Dモジュール（type=module）から呼べるように公開
+window.computeOutComplexForDirection = computeOutComplexForDirection;
 
 // 3マイクのパターン計算（まだ正規化しない）
 // 出力 = w1 * P1 + w2 * P2 + w3 * P3
@@ -642,6 +964,9 @@ function getMixLabel(w1, w2, w3) {
 }
 
 function update() {
+    // レイアウト変化（タブ切替/ウィンドウリサイズ等）でのキャンバスサイズずれを避ける
+    resizeCanvases();
+
     let alpha1 = parseFloat(alpha1Input.value);
     let beta1  = parseFloat(beta1Input.value);
     let alphaMid, betaMid, alpha2, beta2;
@@ -757,6 +1082,223 @@ function update() {
         `ビーム幅 (−6 dB) ≈ ${beamwidthDeg.toFixed(1)}°`;
 
     drawPolar(thetaArr, magsNorm, signs, showSign);
+
+    // --- Optional: 3D update (module provides window.__polar3_threeUpdate) ---
+    if (activeView === 'view3d' && typeof window.__polar3_threeUpdate === 'function') {
+        const state = collectState();
+        try {
+            window.__polar3_threeUpdate(state);
+        } catch (e) {
+            // ignore 3D init/render errors (offline etc)
+        }
+    }
+
+    // --- Optional: frequency sweep view ---
+    if (activeView === 'viewfreq') {
+        const state = collectState();
+        renderFrequencyCharacteristics(state);
+    }
+
+    // --- Persist state ---
+    if (autoSaveInput.checked) {
+        try {
+            const st = collectState();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(st));
+        } catch (_) {
+            // ignore
+        }
+    }
+}
+
+function renderFrequencyCharacteristics(state) {
+    const sweepKey = JSON.stringify({
+        a1: state.alpha1, b1: state.beta1,
+        am: state.alphaMid, bm: state.betaMid,
+        a2: state.alpha2, b2: state.beta2,
+        link: state.linkPattern,
+        w1: state.w1, w2: state.w2, w3: state.w3,
+        Df: state.D_front_mm, Db: state.D_back_mm,
+        phi: state.phiDeg,
+    });
+
+    if (sweepKey !== lastSettingsForSweepKey) {
+        lastSettingsForSweepKey = sweepKey;
+        lastSweepResult = computeSweepMetrics(state);
+    }
+    drawSweepPlot(lastSweepResult, state);
+}
+
+function logspace(min, max, n) {
+    const a = Math.log10(min);
+    const b = Math.log10(max);
+    const arr = [];
+    for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0 : i / (n - 1);
+        arr.push(Math.pow(10, a + (b - a) * t));
+    }
+    return arr;
+}
+
+function computeSweepMetrics(state) {
+    const fMin = 100;
+    const fMax = 48000;
+    const nPts = 220;
+    const freqs = logspace(fMin, fMax, nPts);
+
+    // 現在設定
+    let alpha1 = state.alpha1;
+    let beta1 = state.beta1;
+    let alphaMid = state.linkPattern ? alpha1 : state.alphaMid;
+    let betaMid = state.linkPattern ? beta1 : state.betaMid;
+    let alpha2 = state.linkPattern ? alpha1 : state.alpha2;
+    let beta2 = state.linkPattern ? beta1 : state.beta2;
+
+    const w1 = state.w1, w2 = state.w2, w3 = state.w3;
+    const D_front_m = state.D_front_mm / 1000;
+    const D_back_m = state.D_back_mm / 1000;
+    const phiRad = degToRad(state.phiDeg);
+
+    const DI = [];
+    const FB = [];
+    const BW = [];
+
+    for (const f of freqs) {
+        const raw = computePatternRawThree(
+            D_front_m, D_back_m, f,
+            alpha1, beta1,
+            alphaMid, betaMid,
+            alpha2, beta2,
+            w1, w2, w3,
+            240,
+            phiRad
+        );
+        const pattern = { mags: raw.magsRaw };
+        const m = computeMetrics(pattern);
+        DI.push(m.DI_dB);
+        FB.push(m.fb_dB);
+        BW.push(m.beamwidthDeg);
+    }
+    return { freqs, DI, FB, BW };
+}
+
+function drawSweepPlot(sweep, state) {
+    const w = respCanvas.width;
+    const h = respCanvas.height;
+    respCtx.clearRect(0, 0, w, h);
+
+    respCtx.fillStyle = '#020617';
+    respCtx.fillRect(0, 0, w, h);
+
+    if (!sweep) {
+        respCtx.fillStyle = '#e5e7eb';
+        respCtx.font = '14px system-ui';
+        respCtx.fillText('No data', 20, 30);
+        return;
+    }
+
+    // Layout: 3 stacked plots
+    const pad = 56;
+    const gap = 18;
+    const plotH = Math.floor((h - pad * 2 - gap * 2) / 3);
+
+    const rects = [
+        { x: pad, y: pad + 0 * (plotH + gap), w: w - pad * 2, h: plotH, title: 'DI (dB)', series: sweep.DI, color: '#3b82f6', yMin: 0, yMax: 20 },
+        { x: pad, y: pad + 1 * (plotH + gap), w: w - pad * 2, h: plotH, title: 'Front/Back (dB)', series: sweep.FB, color: '#10b981', yMin: 0, yMax: 40 },
+        { x: pad, y: pad + 2 * (plotH + gap), w: w - pad * 2, h: plotH, title: 'Beamwidth @ -6dB (deg)', series: sweep.BW, color: '#f97316', yMin: 0, yMax: 360 },
+    ];
+
+    const freqs = sweep.freqs;
+    const fMin = freqs[0];
+    const fMax = freqs[freqs.length - 1];
+    const lxMin = Math.log10(fMin);
+    const lxMax = Math.log10(fMax);
+    const xForF = (f, r) => r.x + (Math.log10(f) - lxMin) / (lxMax - lxMin) * r.w;
+
+    // Titles
+    respCtx.fillStyle = '#e5e7eb';
+    respCtx.font = '14px system-ui';
+    respCtx.fillText('周波数特性（DI / 前後比 / ビーム幅）', 18, 26);
+
+    // Small caption
+    respCtx.fillStyle = '#9ca3af';
+    respCtx.font = '12px system-ui';
+    respCtx.fillText(`w=[${state.w1.toFixed(2)}, ${state.w2.toFixed(2)}, ${state.w3.toFixed(2)}], D_front=${state.D_front_mm.toFixed(0)}mm, D_back=${state.D_back_mm.toFixed(0)}mm, φ=${state.phiDeg.toFixed(0)}°`, 18, 46);
+
+    function drawAxes(r, yMin, yMax) {
+        respCtx.strokeStyle = '#1f2937';
+        respCtx.lineWidth = 1;
+        respCtx.strokeRect(r.x, r.y, r.w, r.h);
+
+        // grid + y labels
+        respCtx.fillStyle = '#9ca3af';
+        respCtx.font = '11px system-ui';
+        const ticks = 4;
+        for (let i = 0; i <= ticks; i++) {
+            const t = i / ticks;
+            const y = r.y + r.h - t * r.h;
+            respCtx.strokeStyle = '#0b1220';
+            respCtx.beginPath();
+            respCtx.moveTo(r.x, y);
+            respCtx.lineTo(r.x + r.w, y);
+            respCtx.stroke();
+            const val = (yMin + (yMax - yMin) * t);
+            respCtx.textAlign = 'right';
+            respCtx.textBaseline = 'middle';
+            respCtx.fillText(val.toFixed(0), r.x - 8, y);
+        }
+
+        // x ticks (log)
+        const decadeMarks = [100, 200, 500, 1000, 2000, 5000, 10000, 20000, 48000];
+        respCtx.strokeStyle = '#0b1220';
+        respCtx.fillStyle = '#9ca3af';
+        respCtx.textAlign = 'center';
+        respCtx.textBaseline = 'top';
+        decadeMarks.forEach(f => {
+            if (f < fMin || f > fMax) return;
+            const x = xForF(f, r);
+            respCtx.beginPath();
+            respCtx.moveTo(x, r.y);
+            respCtx.lineTo(x, r.y + r.h);
+            respCtx.stroke();
+            if (r === rects[2]) {
+                respCtx.fillText(f >= 1000 ? `${(f/1000).toFixed(f===1000?0: (f===2000?1:0))}k` : String(f), x, r.y + r.h + 6);
+            }
+        });
+    }
+
+    function drawSeries(r, series, yMin, yMax, color) {
+        respCtx.strokeStyle = color;
+        respCtx.lineWidth = 2;
+        respCtx.beginPath();
+        for (let i = 0; i < freqs.length; i++) {
+            const x = xForF(freqs[i], r);
+            const v = series[i];
+            const t = (v - yMin) / (yMax - yMin);
+            const y = r.y + r.h - t * r.h;
+            if (i === 0) respCtx.moveTo(x, y);
+            else respCtx.lineTo(x, y);
+        }
+        respCtx.stroke();
+    }
+
+    rects.forEach(r => {
+        // title
+        respCtx.fillStyle = '#e5e7eb';
+        respCtx.font = '12px system-ui';
+        respCtx.textAlign = 'left';
+        respCtx.textBaseline = 'bottom';
+        respCtx.fillText(r.title, r.x, r.y - 6);
+
+        drawAxes(r, r.yMin, r.yMax);
+        drawSeries(r, r.series, r.yMin, r.yMax, r.color);
+    });
+
+    // x-axis label
+    respCtx.fillStyle = '#9ca3af';
+    respCtx.font = '12px system-ui';
+    respCtx.textAlign = 'center';
+    respCtx.textBaseline = 'bottom';
+    respCtx.fillText('Frequency (Hz, log)', w / 2, h - 10);
 }
 
 // マウスホバーで角度＆レベル表示（正規化後の値を表示）
@@ -764,8 +1306,10 @@ canvas.addEventListener('mousemove', (e) => {
     if (!lastPattern) return;
 
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
     const relX = x - cx;
@@ -811,6 +1355,32 @@ exportPngBtn.addEventListener('click', () => {
     document.body.removeChild(link);
 });
 
+// 3D PNG エクスポート（Three.js renderer 側へ委譲）
+exportPng3dBtn.addEventListener('click', () => {
+    if (typeof window.__polar3_threeExportPng === 'function') {
+        window.__polar3_threeExportPng();
+        return;
+    }
+    // 3D未初期化/利用不可
+    alert('3D表示が利用できません（オフライン等の可能性）。');
+});
+
+// 設定URLコピー（#s=... に state を埋め込み）
+copyUrlBtn.addEventListener('click', async () => {
+    const st = collectState();
+    const payload = base64UrlEncode(JSON.stringify(st));
+    const base = location.href.split('#')[0];
+    const url = `${base}#s=${payload}`;
+    try {
+        await navigator.clipboard.writeText(url);
+        copyUrlBtn.textContent = 'コピーしました';
+        setTimeout(() => (copyUrlBtn.textContent = '設定URLコピー'), 900);
+    } catch (e) {
+        // fallback
+        prompt('このURLをコピーしてください:', url);
+    }
+});
+
 // CSV エクスポート（現在の表示系に合わせた正規化値）
 exportCsvBtn.addEventListener('click', () => {
     if (!lastPattern) return;
@@ -836,7 +1406,292 @@ exportCsvBtn.addEventListener('click', () => {
     URL.revokeObjectURL(url);
 });
 
+// View tab wiring
+tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const v = btn.dataset.view;
+        setActiveView(v);
+    });
+});
+
+// Load state from URL hash > localStorage
+try {
+    const hash = location.hash || '';
+    const m = hash.match(/#s=([^&]+)/);
+    if (m && m[1]) {
+        const decoded = base64UrlDecode(m[1]);
+        const state = JSON.parse(decoded);
+        applyState(state);
+    } else {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) applyState(JSON.parse(saved));
+    }
+} catch (_) {
+    // ignore
+}
+
+setActiveView(activeView);
+resizeCanvases();
 update();
+
+window.addEventListener('resize', () => {
+    resizeCanvases();
+    scheduleUpdate();
+});
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const container = document.getElementById('threeContainer');
+let renderer, scene, camera, controls;
+let surfaceMesh, axes;
+let inited = false;
+
+function srgbToLinear(c) {
+    // c in [0,1]
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+function colorFromHex(hex) {
+    const h = hex.replace('#', '');
+    const r = parseInt(h.slice(0, 2), 16) / 255;
+    const g = parseInt(h.slice(2, 4), 16) / 255;
+    const b = parseInt(h.slice(4, 6), 16) / 255;
+    return new THREE.Color(srgbToLinear(r), srgbToLinear(g), srgbToLinear(b));
+}
+
+const colPos = colorFromHex('#f97316');
+const colNeg = colorFromHex('#06b6d4');
+const colAxis = colorFromHex('#93c5fd');
+
+function ensureInit() {
+    if (inited) return;
+    inited = true;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x020617);
+
+    const w = container.clientWidth || 800;
+    const h = container.clientHeight || 600;
+    camera = new THREE.PerspectiveCamera(50, w / h, 0.01, 100);
+    camera.position.set(1.8, 1.4, 1.8);
+    camera.lookAt(0, 0, 0);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h);
+    container.appendChild(renderer.domElement);
+
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.addEventListener('change', () => {
+        renderer.render(scene, camera);
+    });
+
+    const light1 = new THREE.DirectionalLight(0xffffff, 1.2);
+    light1.position.set(2, 3, 1);
+    scene.add(light1);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.35));
+
+    // axes
+    const axesGeo = new THREE.BufferGeometry();
+    const pts = new Float32Array([
+        0, 0, 0,  1.2, 0, 0,  // X
+        0, 0, 0,  0, 1.2, 0,  // Y (forward)
+        0, 0, 0,  0, 0, 1.2,  // Z
+    ]);
+    axesGeo.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+    const axesMat = new THREE.LineBasicMaterial({ color: 0x93c5fd, transparent: true, opacity: 0.7 });
+    axes = new THREE.LineSegments(axesGeo, axesMat);
+    scene.add(axes);
+}
+
+function computeSurfaceGeometry(state) {
+    // sampling
+    const azSteps = 160;
+    const elSteps = 80;
+    const nVert = (azSteps + 1) * (elSteps + 1);
+
+    const positions = new Float32Array(nVert * 3);
+    const colors = new Float32Array(nVert * 3);
+
+    // resolve settings
+    const link = !!state.linkPattern;
+    const alpha1 = Number(state.alpha1);
+    const beta1 = Number(state.beta1);
+    const alphaMid = link ? alpha1 : Number(state.alphaMid);
+    const betaMid = link ? beta1 : Number(state.betaMid);
+    const alpha2 = link ? alpha1 : Number(state.alpha2);
+    const beta2 = link ? beta1 : Number(state.beta2);
+    const w1 = Number(state.w1);
+    const w2 = Number(state.w2);
+    const w3 = Number(state.w3);
+    const D_front_m = Number(state.D_front_mm) / 1000;
+    const D_back_m = Number(state.D_back_mm) / 1000;
+    const f = Number(state.f);
+    const phiRad = (Number(state.phiDeg) * Math.PI) / 180;
+
+    // normalization reference
+    let ref;
+    {
+        // forward direction: az=0, el=0 => u=(0,1,0)
+        const out = window.computeOutComplexForDirection?.(0, 1, 0, D_front_m, D_back_m, f, alpha1, beta1, alphaMid, betaMid, alpha2, beta2, w1, w2, w3, phiRad);
+        if (!out) {
+            ref = 1;
+        } else {
+            ref = Math.hypot(out.re, out.im);
+        }
+        if (!(ref > 0)) ref = 1;
+    }
+
+    let maxMag = 0;
+
+    // first pass: compute mags (and max if needed)
+    const mags = new Float32Array(nVert);
+    const signs = new Int8Array(nVert);
+    let idx = 0;
+    for (let ie = 0; ie <= elSteps; ie++) {
+        const tEl = ie / elSteps;
+        const el = -Math.PI / 2 + tEl * Math.PI;
+        const ce = Math.cos(el);
+        const se = Math.sin(el);
+        for (let ia = 0; ia <= azSteps; ia++) {
+            const tAz = ia / azSteps;
+            const az = tAz * Math.PI * 2;
+            // forward +Y convention
+            const uX = ce * Math.sin(az);
+            const uY = ce * Math.cos(az);
+            const uZ = se;
+
+            const out = window.computeOutComplexForDirection( uX, uY, uZ, D_front_m, D_back_m, f, alpha1, beta1, alphaMid, betaMid, alpha2, beta2, w1, w2, w3, phiRad );
+            const mag = Math.hypot(out.re, out.im);
+            mags[idx] = mag;
+            signs[idx] = out.re >= 0 ? 1 : -1;
+            if (mag > maxMag) maxMag = mag;
+            idx++;
+        }
+    }
+    if (!(maxMag > 0)) maxMag = 1;
+    const norm = state.normalizeFront ? ref : maxMag;
+    const baseR = 1.0;
+
+    // second pass: build vertices
+    idx = 0;
+    for (let ie = 0; ie <= elSteps; ie++) {
+        const tEl = ie / elSteps;
+        const el = -Math.PI / 2 + tEl * Math.PI;
+        const ce = Math.cos(el);
+        const se = Math.sin(el);
+        for (let ia = 0; ia <= azSteps; ia++) {
+            const tAz = ia / azSteps;
+            const az = tAz * Math.PI * 2;
+            const uX = ce * Math.sin(az);
+            const uY = ce * Math.cos(az);
+            const uZ = se;
+            const magN = mags[idx] / norm;
+
+            const r = baseR * magN;
+            const p = idx * 3;
+            positions[p + 0] = uX * r;
+            positions[p + 1] = uY * r;
+            positions[p + 2] = uZ * r;
+
+            const c = signs[idx] >= 0 ? colPos : colNeg;
+            colors[p + 0] = c.r;
+            colors[p + 1] = c.g;
+            colors[p + 2] = c.b;
+            idx++;
+        }
+    }
+
+    // indices
+    const indices = [];
+    for (let ie = 0; ie < elSteps; ie++) {
+        for (let ia = 0; ia < azSteps; ia++) {
+            const a = ie * (azSteps + 1) + ia;
+            const b = a + 1;
+            const c = a + (azSteps + 1);
+            const d = c + 1;
+            indices.push(a, c, b);
+            indices.push(b, c, d);
+        }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+}
+
+function threeUpdate(state) {
+    ensureInit();
+    if (!window.computeOutComplexForDirection) return;
+
+    const geo = computeSurfaceGeometry(state);
+
+    if (!surfaceMesh) {
+        const mat = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            metalness: 0.0,
+            roughness: 0.6,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.95,
+        });
+        surfaceMesh = new THREE.Mesh(geo, mat);
+        scene.add(surfaceMesh);
+    } else {
+        surfaceMesh.geometry.dispose();
+        surfaceMesh.geometry = geo;
+    }
+
+    // Resize if needed
+    const w = container.clientWidth || 800;
+    const h = container.clientHeight || 600;
+    const size = renderer.getSize(new THREE.Vector2());
+    if (Math.abs(size.x - w) > 1 || Math.abs(size.y - h) > 1) {
+        renderer.setSize(w, h);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+    }
+    controls.update();
+    renderer.render(scene, camera);
+}
+
+function threeExportPng() {
+    ensureInit();
+    if (!renderer) return;
+    const url = renderer.domElement.toDataURL('image/png');
+    const a = document.createElement('a');
+    const now = new Date();
+    const ts = now.toISOString().replace(/[:.]/g, '-');
+    a.href = url;
+    a.download = `polar3_3d_${ts}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+}
+
+// expose hooks to classic script
+window.__polar3_threeUpdate = threeUpdate;
+window.__polar3_threeExportPng = threeExportPng;
+
+// 初回ロード直後に 3D が表示中なら、現在設定で再計算して描画
+try {
+    const v3 = document.getElementById('view3d');
+    if (v3 && v3.classList.contains('show')) {
+        const st = window.__polar3_collectState ? window.__polar3_collectState() : null;
+        if (st) threeUpdate(st);
+    }
+} catch (_) {
+    // ignore
+}
+
 </script>
 
 
